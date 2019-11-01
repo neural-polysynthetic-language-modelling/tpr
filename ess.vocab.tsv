@@ -1,52 +1,55 @@
-a	unrounded	voiced	open	front		oral	sonorant	full	continuant	vowel	Yupik	sound	letter
-e	unrounded	voiced	mid	central		oral	sonorant		continuant	vowel	Yupik	sound	letter
-i	unrounded	voiced	close	front		oral	sonorant	full	continuant	vowel	Yupik	sound	letter
-u	rounded	voiced	close	back		oral	sonorant	full	continuant	vowel	Yupik	sound	letter
-p	unrounded	unvoiced	labial			oral	obstruent		stop	consonant	Yupik	sound	letter
-t	unrounded	unvoiced	alveolar		coronal	oral	obstruent		stop	consonant	Yupik	sound	letter
-k	unrounded	unvoiced	velar		dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter
-kw	rounded	unvoiced	velar		dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter
-q	unrounded	unvoiced	uvular		dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter
-qw	rounded	unvoiced	uvular		dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter
-v	unrounded	voiced	labial			oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-l	unrounded	voiced	alveolar	lateral	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter
-z	unrounded	voiced	alveolar		coronal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-y	unrounded	voiced	palatal		dorsal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter
-r	unrounded	voiced	retroflex		coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter
-g	unrounded	voiced	velar		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-w	rounded	voiced	velar		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-gh	unrounded	voiced	uvular		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-ghw	rounded	voiced	uvular		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-f	unrounded	unvoiced	labial			oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-ll	unrounded	unvoiced	alveolar	lateral	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter
-s	unrounded	unvoiced	alveolar		coronal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-rr	unrounded	unvoiced	retroflex		coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter
-gg	unrounded	unvoiced	velar		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-wh	rounded	unvoiced	velar		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-ghh	unrounded	unvoiced	uvular		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-ghhw	rounded	unvoiced	uvular		dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-h	unrounded	unvoiced	glottal			oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter
-m	unrounded	voiced	labial			nasal	sonorant		stop	consonant	Yupik	sound	letter
-n	unrounded	voiced	alveolar		coronal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-ng	unrounded	voiced	velar		dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-ngw	rounded	voiced	velar		dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-mm	unrounded	unvoiced	labial			nasal	sonorant		stop	consonant	Yupik	sound	letter
-nn	unrounded	unvoiced	alveolar		coronal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-ngng	unrounded	unvoiced	velar		dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-ngngw	rounded	unvoiced	velar		dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter
-!									terminal	unpaired		punctuation	non-letter
-$										unpaired		punctuation	non-letter
-(										paired	opening	punctuation	non-letter
-)										paired	closing	punctuation	non-letter
-,										unpaired		punctuation	non-letter
--										unpaired		punctuation	non-letter
-.									terminal	unpaired		punctuation	non-letter
-/										unpaired		punctuation	non-letter
-:										unpaired		punctuation	non-letter
-;										unpaired		punctuation	non-letter
-?									terminal	unpaired		punctuation	non-letter
-ʼ										unpaired		punctuation	letter
-‘										paired	opening	punctuation	non-letter
-’										paired	closing	punctuation	non-letter
-“										paired	opening	punctuation	non-letter
-”										paired	closing	punctuation	non-letter
+Grapheme	Roundedness	Voicing	Place of articulation	Vowel closeness	Vowel height	Vowel fullness	Liquid	Coronal/dorsal	Oral	Obstruent	Sonorant	Continuant	Consonant	Language	Punctuation	Letter	Doubling	Strength	Can end sentence	Paired
+a	unrounded	voiced		open	front	full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
+e	unrounded	voiced		mid	central	not full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
+i	unrounded	voiced		close	front	full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
+u	rounded	voiced		close	back	full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
+p	unrounded	unvoiced	labial						oral	obstruent		stop	consonant	Yupik	sound	letter				
+t	unrounded	unvoiced	alveolar					coronal	oral	obstruent		stop	consonant	Yupik	sound	letter				
+k	unrounded	unvoiced	velar					dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter				
+kw	rounded	unvoiced	velar					dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter				
+q	unrounded	unvoiced	uvular					dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter				
+qw	rounded	unvoiced	uvular					dorsal	oral	obstruent		stop	consonant	Yupik	sound	letter				
+v	unrounded	voiced	labial						oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter				
+l	unrounded	voiced	alveolar				lateral	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter	can be doubled			
+z	unrounded	voiced	alveolar					coronal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter				
+y	unrounded	voiced	palatal					dorsal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter				
+r	unrounded	voiced	retroflex				rhotic	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter	can be doubled			
+g	unrounded	voiced	velar					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be doubled	strong		
+w	rounded	voiced	velar					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter		strong		
+gh	unrounded	voiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be doubled	weak		
+gh*	unrounded	voiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be doubled	strong		
+ghw	rounded	voiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be doubled	strong		
+f	unrounded	unvoiced	labial						oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter				
+ll	unrounded	unvoiced	alveolar				lateral	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter	can be undoubled			
+s	unrounded	unvoiced	alveolar					coronal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter				
+rr	unrounded	unvoiced	retroflex				rhotic	coronal	oral	sonorant	approximant	continuant	consonant	Yupik	sound	letter	can be undoubled			
+gg	unrounded	unvoiced	velar					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be undoubled	strong		
+wh	rounded	unvoiced	velar					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter		strong		
+ghh	unrounded	unvoiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be undoubled	weak		
+ghh*	unrounded	unvoiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be undoubled	strong		
+ghhw	rounded	unvoiced	uvular					dorsal	oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter	can be undoubled	strong		
+h	unrounded	unvoiced	glottal						oral	obstruent	fricative	continuant	consonant	Yupik	sound	letter				
+m	unrounded	voiced	labial						nasal	sonorant		stop	consonant	Yupik	sound	letter	can be doubled			
+n	unrounded	voiced	alveolar					coronal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be doubled			
+ng	unrounded	voiced	velar					dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be doubled			
+ngw	rounded	voiced	velar					dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be doubled			
+mm	unrounded	unvoiced	labial						nasal	sonorant		stop	consonant	Yupik	sound	letter	can be undoubled			
+nn	unrounded	unvoiced	alveolar					coronal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be undoubled			
+ngng	unrounded	unvoiced	velar					dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be undoubled			
+ngngw	rounded	unvoiced	velar					dorsal	nasal	sonorant		stop	consonant	Yupik	sound	letter	can be undoubled			
+!														Yupik	punctuation	non-letter			terminal	unpaired
+$														Yupik	punctuation	non-letter				unpaired
+(														Yupik	punctuation	non-letter				opening
+)														Yupik	punctuation	non-letter				closing
+,														Yupik	punctuation	non-letter				unpaired
+-														Yupik	punctuation	non-letter				unpaired
+.														Yupik	punctuation	non-letter			terminal	unpaired
+/														Yupik	punctuation	non-letter				unpaired
+:														Yupik	punctuation	non-letter				unpaired
+;														Yupik	punctuation	non-letter				unpaired
+?														Yupik	punctuation	non-letter			terminal	unpaired
+ʼ														Yupik	punctuation	letter				unpaired
+‘														Yupik	punctuation	non-letter				opening
+’														Yupik	punctuation	non-letter				closing
+“														Yupik	punctuation	non-letter				opening
+”														Yupik	punctuation	non-letter				closing
