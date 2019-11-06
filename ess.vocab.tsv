@@ -1,4 +1,12 @@
 Grapheme	Roundedness	Voicing	Place of articulation	Vowel closeness	Vowel height	Vowel fullness	Liquid	Coronal/dorsal	Oral	Obstruent	Sonorant	Continuant	Consonant	Language	Punctuation	Letter	Doubling	Strength	Can end sentence	Paired
+<oov>																				unpaired
+<pad>																				unpaired
+<morpheme>																				opening
+</morpheme>																				closing
+<word>																				opening
+</word>																				closing
+<sentence>																				opening
+</sentence>																				closing
 a	unrounded	voiced		open	front	full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
 e	unrounded	voiced		mid	central	not full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
 i	unrounded	voiced		close	front	full			oral	sonorant		continuant	vowel	Yupik	sound	letter				
