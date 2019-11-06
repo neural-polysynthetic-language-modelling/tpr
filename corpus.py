@@ -98,7 +98,7 @@ def main(args: argparse.Namespace) -> None:
         corpus = MorphemeCorpus(alphabet=Alphabet.load(args.alphabet),
                                 tokenizer=Tokenizer.load(args.tokenizer),
                                 sentences=input_file,
-                                blacklist_char=args.blacklist_char,
+                                blacklist_char=args.blacklist_character,
                                 max_graphemes_per_morpheme=args.max_graphemes_per_morpheme,
                                 start_of_morpheme=args.start_of_morpheme,
                                 end_of_morpheme=args.end_of_morpheme)
