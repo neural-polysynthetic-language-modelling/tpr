@@ -4,9 +4,9 @@ from typing import Iterable, List, MutableSet, Optional
 
 from torch.utils.data.dataset import Dataset
 
-from features import Alphabet
-from morpheme import Morpheme, Morphemes
-from tokenizer import Tokenizer
+from features import *
+from morpheme import *
+from tokenizer import *
 
 
 class MorphemeCorpus(Dataset):
