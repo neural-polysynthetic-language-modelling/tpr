@@ -113,6 +113,9 @@ class Alphabet:
         else:
             return self.oov
 
+    def __contains__(self, key: str) -> bool:
+        return key in self.mapping
+
     @staticmethod
     def load(filename: str) -> 'Alphabet':
         import pickle
