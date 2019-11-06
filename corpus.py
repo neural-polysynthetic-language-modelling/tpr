@@ -99,7 +99,7 @@ def main(args: argparse.Namespace) -> None:
                                 tokenizer=Tokenizer.load(args.tokenizer),
                                 sentences=input_file,
                                 blacklist_char=args.blacklist_character,
-                                max_graphemes_per_morpheme=args.max_graphemes_per_morpheme,
+                                max_graphemes_per_morpheme=args.max_characters,
                                 start_of_morpheme=args.start_of_morpheme,
                                 end_of_morpheme=args.end_of_morpheme)
 
