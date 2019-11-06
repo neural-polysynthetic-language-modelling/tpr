@@ -78,6 +78,17 @@ class Alphabet:
                 self._entry_map[v.string] = v
                 self._entry_list.append(v)
 
+    @staticmethod
+    def load(filename: str) -> 'Alphabet':
+        import pickle
+        with open(filename, 'rb') as pickled_file:
+            return pickle.load(pickled_file)
+
+    def dump(self, filename: str) -> None:
+        import pickle
+        with open(filename, 'wb') as pickled_file:
+            pickle.dump(self, pickled_file)
+
     def vector(self, symbol: Symbol) -> List[int]:
         one_hot: List[int] = [0] * len(self)
         one_hot[symbol.integer] = 1
