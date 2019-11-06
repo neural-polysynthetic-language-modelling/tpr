@@ -80,6 +80,9 @@ def configure(arguments: List[str]) -> argparse.Namespace:
     p.add('--end_of_morpheme', required=True, type=str, metavar='STRING',
           help="Reserved symbol to be inserted at the end of each morpheme. This symbol must appear in the alphabet")
 
+    p.add('--print_morphemes', default=True, required=True, type=bool, metavar='BOOL',
+          help="If true, print all morphemes to stderr")
+
     p.add('-i', '--input_file', required=True, type=str, metavar="FILENAME",
           help="Input file containing corpus in plain-text format")
 
@@ -102,6 +105,10 @@ def main(args: argparse.Namespace) -> None:
                                 max_graphemes_per_morpheme=args.max_graphemes_per_morpheme,
                                 start_of_morpheme=args.start_of_morpheme,
                                 end_of_morpheme=args.end_of_morpheme)
+
+        if args.verbose:
+            for morpheme in corpus.morphemes:
+                print(f"{str(morpheme)}\tlen={len(morpheme)}", file=sys.stderr)
 
         pickle.dump(corpus, output_file)
 
