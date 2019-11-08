@@ -21,16 +21,26 @@ class MorphemeCorpus(Dataset):
 
         morphemes: List[List[str]] = list()
         processed_morphemes: MutableSet[str] = set()
+        skipped_morphemes: MutableSet[str] = set()
 
         for sentence in sentences:
             for word in tokenizer.words(sentence):
-                if not word.startswith(blacklist_char):
+                if word.startswith(blacklist_char):
+                    if word not in skipped_morphemes:
+                        print(f"Skipping word:\t{word}", file=sys.stderr)
+                        skipped_morphemes.add(word)
+                else:
+                    print(f"Processing word:\t{word}", file=sys.stderr)
                     for morpheme in tokenizer.morphemes(word):
-                        if morpheme not in processed_morphemes:
-                            processed_morphemes.add(morpheme)
+                        if morpheme not in processed_morphemes and morpheme not in skipped_morphemes:
                             graphemes = tokenizer.graphemes(morpheme)
                             if max_graphemes_per_morpheme is None or len(graphemes) <= max_graphemes_per_morpheme:
+                                print(f"Adding morpheme\t{morpheme}\tfrom word {word}", file=sys.stderr)
+                                processed_morphemes.add(morpheme)
                                 morphemes.append(graphemes)
+                            else:
+                                print(f"Skipping morpheme\t{morpheme}\tfrom word {word}", file=sys.stderr)
+                                skipped_morphemes.add(morpheme)
 
         self.morphemes = Morphemes(alphabet=alphabet,
                                    start_of_morpheme=start_of_morpheme, end_of_morpheme=end_of_morpheme,
