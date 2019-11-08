@@ -120,17 +120,24 @@ class YupikMorphemeTokenizer(MorphemeTokenizer):
 
         return caps
 
-    def handle_analyzer_bug(self, word: str) -> str:
-        graphemes = list()
-        for i in range(len(word)):
-            graphemes.append(word[i])
-            if i + 1 < len(word) and (word[i] == 'gh*' or word[i] == 'ghh*') and word[i + 1] != self.morpheme_delimiter:
-                graphemes.append(self.morpheme_delimiter)
-        return "".join(graphemes)
-        
+    def handle_analyzer_bug(self, graphemes: List[str]) -> str:
+        used_fix = False
+        result = list()
+        for i in range(len(graphemes)):
+            result.append(graphemes[i])
+            if i + 1 < len(graphemes) and (graphemes[i] == 'gh*' or graphemes[i] == 'ghh*') and graphemes[i + 1] != self.morpheme_delimiter:
+                result.append(self.morpheme_delimiter)
+                used_fix = True
+
+        if used_fix:
+            print(f"Bugfix in word:\t{''.join(graphemes)}\t{''.join(result)}")
+            return result
+        else:
+            return graphemes
+
     def morphemes(self, word: str) -> List[str]:
-        word = self.handle_analyzer_bug(word)
-        return super().morphemes("".join(self.graphemes(word)))
+        graphemes = self.handle_analyzer_bug(self.graphemes(word))
+        return super().morphemes("".join(graphemes))
 
     def graphemes(self, morpheme: str) -> List[str]:
         yupik_graphemes = YupikMorphemeTokenizer.to_list(morpheme)
