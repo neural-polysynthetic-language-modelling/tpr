@@ -44,7 +44,7 @@ class MorphemeTokenizer(Tokenizer):
 class YupikMorphemeTokenizer(MorphemeTokenizer):
 
     grapheme_inventory = ['ngngw',
-                          'ghhw', 'ngng',
+                          'ghhw', 'ngng', 'ghh*',
                           'ghh', 'ghw', 'ngw', 'gh*',
                           'gg', 'gh', 'kw', 'll', 'mm', 'ng', 'nn', 'qw', 'rr', 'wh',
                           'a', 'e', 'f', 'g', 'h', 'i', 'k', 'l', 'm', 'n', 'p', 'q',
