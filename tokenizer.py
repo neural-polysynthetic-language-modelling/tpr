@@ -124,10 +124,16 @@ class YupikMorphemeTokenizer(MorphemeTokenizer):
         used_fix = False
         result = list()
         for i in range(len(graphemes)):
-            result.append(graphemes[i])
             if i + 1 < len(graphemes) and (graphemes[i] == 'gh*' or graphemes[i] == 'ghh*') and graphemes[i + 1] != self.morpheme_delimiter:
+                result.append(graphemes[i])
                 result.append(self.morpheme_delimiter)
                 used_fix = True
+            elif graphemes[i] == '-':
+                used_fix = True
+                if i + 1 < len(graphemes) and graphemes[i+1] == self.morpheme_delimiter:
+                    result.append('-')
+            else:
+                result.append(graphemes[i])
 
         if used_fix:
             print(f"Bugfix in word:\t{''.join(graphemes)}\t{''.join(result)}")
