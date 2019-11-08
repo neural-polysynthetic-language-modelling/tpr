@@ -131,7 +131,7 @@ class YupikMorphemeTokenizer(MorphemeTokenizer):
             elif graphemes[i] == '-':
                 used_fix = True
                 if i + 1 < len(graphemes) and graphemes[i+1] == self.morpheme_delimiter:
-                    result.append('-')
+                    result.append(self.morpheme_delimiter)
             else:
                 result.append(graphemes[i])
 
