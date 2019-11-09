@@ -26,7 +26,7 @@ class Dimensions(NamedTuple):
 class UnbindingLoss(Loss):
     """
     This criterion generalizes cross-entropy loss
-       over the predicted symbol vectors in a tensor product representation of a morpheme
+       over predicted symbol vectors in a tensor product representation of a morpheme
        and the corresponding gold standard vectors, using cosine similarity.
     """
 
