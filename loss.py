@@ -1,4 +1,4 @@
-from typing import List, NamedTuple
+from typing import List, NamedTuple, Optional
 
 import torch
 from torch.nn.functional import cross_entropy
@@ -28,12 +28,10 @@ class UnbindingLoss(Loss):
     def __init__(
         self,
         alphabet: Alphabet,
-        weight=None,
-        size_average=None,
-        reduce=None,
-        reduction="mean",
+        weight: Optional[torch.Tensor] = None,
+        reduction: str = "mean"
     ):
-        super().__init__(size_average=size_average, reduce=reduce, reduction=reduction)
+        super().__init__(reduction=reduction)
 
         self.register_buffer("alpha_tensor", torch.stack([torch.tensor(symbol.vector) for symbol in alphabet]))
         """Tensor containing gold standard vector representations for each symbol in the alphabet"""
