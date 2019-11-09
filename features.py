@@ -97,6 +97,7 @@ class Alphabet:
 
     def __init__(self, *, symbols: List[Symbol], oov: Symbol, pad: Symbol):
         self.symbols = symbols
+        self.integers = {symbol: i for i, symbol in symbols}
         self.mapping = {str(symbol): symbol for symbol in symbols}
         self.oov = oov
         self.pad = pad
@@ -115,6 +116,9 @@ class Alphabet:
 
     def __contains__(self, key: str) -> bool:
         return key in self.mapping
+
+    def index_of(self, symbol: Symbol) -> int:
+        return self.integers[symbol]
 
     @staticmethod
     def load(filename: str) -> 'Alphabet':
