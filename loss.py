@@ -44,8 +44,6 @@ class UnbindingLoss(Loss):
         self.weight = weight
         """See torch.nn.CrossEntropyLoss for details"""
 
-        self.alphabet: Alphabet = alphabet
-
         self.a: int = len(alphabet)
         """Number of symbols in the alphabet"""
 
@@ -121,7 +119,7 @@ class UnbindingLoss(Loss):
 
         # Calculate a tensor of shape (a),
         #   where gold_norm[x] is the Euclidean norm of the x^th symbol vector in the alphabet
-        gold_norm = torch.norm(self.alpha, p=2, dim=-1)
+        gold_norm = torch.norm(self.alpha_tensor, p=2, dim=-1)
 
         # Calculate a tensor of shape (b,m),
         #   where pred_norm[y][z] is the Euclidean norm of predicted symbol vector at position z of batch y
