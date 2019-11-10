@@ -96,7 +96,7 @@ class MorphemeVectors(torch.nn.Module):
 def configure(args: List[str]) -> argparse.Namespace:
 
     p = configargparse.get_argument_parser()
-    p.add('-c', '--config', required=True, is_config_file=True, help='configuration file')
+    p.add('-c', '--config', required=False, is_config_file=True, help='configuration file')
 
     p.add('--corpus', required=True, help='Pickle file containing a MorphemeCorpus object')
     p.add('--hidden_size', required=True, type=int)
