@@ -97,7 +97,7 @@ class Alphabet:
 
     def __init__(self, *, symbols: List[Symbol], oov: Symbol, pad: Symbol):
         self.symbols = symbols
-        self.integers = {symbol: i for i, symbol in symbols}
+        self.integers = {symbol: i for i, symbol in enumerate(symbols)}
         self.mapping = {str(symbol): symbol for symbol in symbols}
         self.oov = oov
         self.pad = pad
