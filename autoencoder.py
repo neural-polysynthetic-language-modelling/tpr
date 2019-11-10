@@ -128,12 +128,11 @@ def train(args: argparse.Namespace) -> None:
     model.run_training(learning_rate=args.learning_rate,
                        epochs=args.num_epochs,
                        batch_size=args.batch_size,
-                       output_filename=args.output_file,
                        logging_frequency=args.print_every,
 
     )
 
-    logging.info(f"Saving model to {output_filename}")
+    logging.info(f"Saving model to {args.output_file}")
     torch.save(model, args.output_file)
 
 
