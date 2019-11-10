@@ -1,8 +1,7 @@
 import argparse
 import configargparse
 import logging
-import sys
-from typing import List
+from typing import List, Tuple
 
 import torch  # type: ignore
 import torch.nn  # type: ignore
@@ -51,7 +50,7 @@ class MorphemeVectors(torch.nn.Module):
     def _apply_hidden_layers(self, tensor_at_input_layer: torch.Tensor) -> torch.Tensor:
         tensor_at_previous_layer: torch.nn.Module = tensor_at_input_layer
 
-        for hidden in self.hidden_layers:  # type: torch.nn.Module
+        for hidden in iter(self.hidden_layers):  # type: torch.nn.Module
             tensor_at_current_layer: torch.Tensor = relu(hidden(tensor_at_previous_layer))
             tensor_at_previous_layer = tensor_at_current_layer
 
