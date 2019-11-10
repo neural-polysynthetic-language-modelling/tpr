@@ -49,7 +49,7 @@ class MorphemeCorpus(Dataset):
 
     @staticmethod
     def collate_tprs(morphemes: List[Morpheme]) -> torch.Tensor:
-        return torch.tensor([morpheme.tpr for morpheme in morphemes], dtype=float)
+        return torch.tensor([morpheme.tpr for morpheme in morphemes], dtype=torch.float)
 
     def __len__(self) -> int:
         return len(self.morphemes)
