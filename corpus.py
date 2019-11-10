@@ -2,6 +2,7 @@ import argparse
 import configargparse
 from typing import Iterable, List, MutableSet, Optional
 
+import torch
 from torch.utils.data.dataset import Dataset
 
 from features import *
@@ -45,6 +46,10 @@ class MorphemeCorpus(Dataset):
         self.morphemes = Morphemes(alphabet=alphabet,
                                    start_of_morpheme=start_of_morpheme, end_of_morpheme=end_of_morpheme,
                                    list_of_morphemes=morphemes)
+
+    @staticmethod
+    def collate_tprs(morphemes: List[Morpheme]) -> torch.Tensor:
+        return torch.tensor([morpheme.tpr for morpheme in morphemes])
 
     def __len__(self) -> int:
         return len(self.morphemes)

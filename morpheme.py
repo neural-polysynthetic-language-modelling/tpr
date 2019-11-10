@@ -1,3 +1,4 @@
+import itertools
 from typing import Any, List, Mapping, NamedTuple
 
 from features import Alphabet, Symbol
@@ -12,6 +13,14 @@ class Morpheme(NamedTuple):
 
     def __str__(self) -> str:
         return Morphemes.list_to_string(self.graphemes, delimiter='')
+
+    @property
+    def flattened_tpr(self) -> List[int]:
+        return list(itertools.chain.from_iterable(self.tpr))
+
+    @property
+    def shape(self) -> List[int]:
+        return list(len(self.tpr), len(self.tpr[0]))
 
 
 class Morphemes:
@@ -42,6 +51,14 @@ class Morphemes:
         self.morpheme_map: Mapping[str, Morpheme] = {Morphemes.list_to_string(morpheme.graphemes,
                                                                               self._grapheme_delimiter): morpheme
                                                      for morpheme in self.morpheme_list}
+
+    @property
+    def flattened_tpr_size(self) -> int:
+        return len(self.morpheme_list[0].flattened_tpr)
+
+    @property
+    def tpr_shape(self) -> List[int]:
+        return self.morpheme_list[0].shape
 
     @staticmethod
     def tpr(graphemes: List[Symbol], max_len: int,
