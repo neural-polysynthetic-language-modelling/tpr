@@ -121,7 +121,7 @@ def train(args: argparse.Namespace) -> None:
 
     model: MorphemeVectors = MorphemeVectors(
         corpus=MorphemeCorpus.load(args.corpus),
-        hidden_layer_size=args.hidden_layer_size,
+        hidden_layer_size=args.hidden_size,
         num_hidden_layers=args.hidden_layers,
     )
 
