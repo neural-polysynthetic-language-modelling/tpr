@@ -71,7 +71,12 @@ class MorphemeVectors(torch.nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
-        data_loader: DataLoader = DataLoader(dataset=self.corpus, batch_size=batch_size, shuffle=True)
+        @staticmethod
+        def collate_morphemes(batch: List[Morpheme]) -> List[Morpheme]:
+            return batch
+
+        data_loader: DataLoader = DataLoader(dataset=self.corpus, batch_size=batch_size, shuffle=True,
+                                             collate_fn=collate_morphemes)
 
         for epoch in range(1, epochs+1):
 
