@@ -71,7 +71,6 @@ class MorphemeVectors(torch.nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
-        @staticmethod
         def collate_morphemes(batch: List[Morpheme]) -> List[Morpheme]:
             return batch
 
