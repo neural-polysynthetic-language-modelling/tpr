@@ -148,4 +148,4 @@ if __name__ == "__main__":
         format="%(asctime)s\t%(message)s",
     )
 
-    train(configure(arguments=sys.argv[1:]))
+    train(configure(args=sys.argv[1:]))
