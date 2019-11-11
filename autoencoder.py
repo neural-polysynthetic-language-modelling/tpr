@@ -1,7 +1,7 @@
 import argparse
 import configargparse
 import logging
-from typing import List, Tuple
+from typing import List, NamedTuple, Tuple
 
 import torch  # type: ignore
 import torch.nn  # type: ignore
@@ -21,7 +21,7 @@ class MorphemeVectors(torch.nn.Module):
         super().__init__()
 
         self.device = device
-        self.loss_function = UnbindingLoss(alphabet=corpus.morphemes.alphabet, device=device)
+        self.unbinding_loss = UnbindingLoss(alphabet=corpus.morphemes.alphabet, device=device)
         self.corpus: MorphemeCorpus = corpus
         self.input_dimension_size: int = corpus.morphemes.flattened_tpr_size
         self.hidden_layer_size: int = hidden_layer_size
@@ -41,6 +41,10 @@ class MorphemeVectors(torch.nn.Module):
                                                              self.input_dimension_size,
                                                              bias=True)
         self.to(device=device)
+
+    def to(self, device):
+        super().to(device)
+        self.device = device
 
     def forward(self, morphemes: List[Morpheme]) -> torch.Tensor:
         batch_size: int = len(morphemes)
@@ -63,6 +67,24 @@ class MorphemeVectors(torch.nn.Module):
     def _apply_output_layer(self, tensor_at_hidden_layer: torch.Tensor) -> torch.Tensor:
         return self.output_layer(tensor_at_hidden_layer)  # .cuda(device=cuda_device))
 
+    @staticmethod
+    def collate_morphemes(batch: List[Morpheme]) -> List[Morpheme]:
+        return batch
+
+    def evaluate(self, morphemes: List[Morpheme]) -> List[Morpheme]:
+        tprs: torch.Tensor = self(morphemes)
+        return self.unbinding_loss.unbind(tprs)
+
+    def run_testing(self, *, batch_size: int) -> None:
+
+        data_loader: DataLoader = DataLoader(dataset=self.corpus, batch_size=batch_size, shuffle=False,
+                                             collate_fn=MorphemeVectors.collate_morphemes)
+
+        for morphemes in iter(data_loader):  # type: List[Morpheme]
+            predicted_morphemes: List[Morpheme] = self.evaluate(morphemes)
+            for i in range(len(morphemes)):
+                print(f"{morphemes[i]}\t{predicted_morphemes[i]}")
+
     def run_training(self, *,
                      learning_rate: float,
                      epochs: int,
@@ -73,11 +95,8 @@ class MorphemeVectors(torch.nn.Module):
 
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
-        def collate_morphemes(batch: List[Morpheme]) -> List[Morpheme]:
-            return batch
-
         data_loader: DataLoader = DataLoader(dataset=self.corpus, batch_size=batch_size, shuffle=True,
-                                             collate_fn=collate_morphemes)
+                                             collate_fn=MorphemeVectors.collate_morphemes)
 
         for epoch in range(1, epochs+1):
 
@@ -87,7 +106,7 @@ class MorphemeVectors(torch.nn.Module):
             for batch_number, morphemes in enumerate(data_loader):  # type: Tuple[int, List[Morpheme]]
                 predictions: torch.Tensor = self(morphemes)
                 labels: torch.Tensor = MorphemeCorpus.collate_tprs(morphemes, self.device)
-                loss: torch.Tensor = self.loss_function(predictions, labels)
+                loss: torch.Tensor = self.unbinding_loss(predictions, labels)
                 total_loss += loss.item()
                 loss.backward()
 
@@ -99,7 +118,7 @@ class MorphemeVectors(torch.nn.Module):
             optimizer.step()
 
 
-def configure(args: List[str]) -> argparse.Namespace:
+def configure_training(args: List[str]) -> argparse.Namespace:
 
     p = configargparse.get_argument_parser()
     p.add('-c', '--config', required=False, is_config_file=True, help='configuration file')
@@ -121,6 +140,23 @@ def configure(args: List[str]) -> argparse.Namespace:
     return p.parse_args(args=args)
 
 
+def configure_testing(args: List[str]) -> argparse.Namespace:
+
+    p = configargparse.get_argument_parser()
+    p.add('-c', '--config', required=False, is_config_file=True, help='configuration file')
+
+    p.add('--morpheme_vectors', required=True, help='Pickle file containing a MorphemeVectors object')
+    p.add('--batch_size', required=True, type=int)
+
+    return p.parse_args(args=args)
+
+
+def evaluate(args: argparse.Namespace) -> None:
+    device = util.get_device()
+    model: MorphemeVectors = torch.load(args.morpheme_vectors).to(device)
+    model.run_testing(args.batch_size)
+
+
 def train(args: argparse.Namespace) -> None:
 
     device = util.get_device()
@@ -131,18 +167,15 @@ def train(args: argparse.Namespace) -> None:
         corpus=MorphemeCorpus.load(args.corpus),
         hidden_layer_size=args.hidden_size,
         num_hidden_layers=args.hidden_layers,
-        device=device
-    )
+        device=device)
 
     model.run_training(learning_rate=args.learning_rate,
                        epochs=args.num_epochs,
                        batch_size=args.batch_size,
-                       logging_frequency=args.print_every,
-
-    )
+                       logging_frequency=args.print_every)
 
     logging.info(f"Saving model to {args.output_file}")
-    torch.save(model, args.output_file)
+    torch.save(model.to(torch.device("cpu")), args.output_file)
 
 
 if __name__ == "__main__":
@@ -156,4 +189,7 @@ if __name__ == "__main__":
         format="%(asctime)s\t%(message)s",
     )
 
-    train(configure(args=sys.argv[1:]))
+    if '--morpheme_vectors' in sys.argv:
+        evaluate(configure_testing(args=sys.argv[1:]))
+    else:
+        train(configure_training(args=sys.argv[1:]))

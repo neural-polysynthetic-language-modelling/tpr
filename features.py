@@ -1,5 +1,5 @@
 from itertools import accumulate
-from typing import Iterator, List, Mapping, Optional, Set
+from typing import Iterator, List, Mapping, Optional, Union, Set
 
 
 class Feature:
@@ -108,14 +108,27 @@ class Alphabet:
     def __len__(self) -> int:
         return len(self.symbols)
 
-    def __getitem__(self, key: str) -> Symbol:
-        if key in self.mapping:
-            return self.mapping[key]
+    def __getitem__(self, key: Union[int, str]) -> Symbol:
+        if isinstance(key, int):
+            return self.symbols[key]
+        elif isinstance(key, str):
+            if key in self.mapping:
+                return self.mapping[key]
+            else:
+                return self.oov
         else:
-            return self.oov
+            raise ValueError
 
-    def __contains__(self, key: str) -> bool:
-        return key in self.mapping
+    def __contains__(self, key: Union[int, str]) -> bool:
+        if isinstance(key, int):
+            if 0 <= key < len(self):
+                return True
+            else:
+                return False
+        elif isinstance(key, str):
+            return key in self.mapping
+        else:
+            return False
 
     def index_of(self, symbol: Symbol) -> int:
         return self.integers[symbol]

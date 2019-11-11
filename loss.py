@@ -6,6 +6,7 @@ from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss as Loss  # The preceding comment line is to suppress a spurious warning message.
 
 from features import Alphabet
+from morpheme import Morpheme
 
 
 class Dimensions(NamedTuple):
@@ -49,27 +50,29 @@ class UnbindingLoss(Loss):
         self.weight = weight
         """See torch.nn.CrossEntropyLoss for details"""
 
+        self.alphabet = alphabet
+
         self.a: int = len(alphabet)
         """Number of symbols in the alphabet"""
 
         self.c: int = len(alphabet.pad.vector)
         """Size of a symbol vector"""
 
-    def check_dimensions(self, predicted: torch.Tensor, label: torch.Tensor) -> Dimensions:
+    def check_dimensions(self, predicted: torch.Tensor, label: torch.Tensor=None) -> Dimensions:
 
         errors: List[str] = list()
 
         if len(predicted.shape) != 3:
             errors.append(f"Predicted tensor should have 3 dimensions but actually has {len(predicted.shape)}.")
-        if len(label.shape) != 3:
+        if label is not None and len(label.shape) != 3:
             errors.append(f"Label tensor should have 3 dimensions but actually has {len(label.shape)}.")
         if len(errors) > 0:
             raise ValueError("\n".join(errors))
-        if predicted.shape[0] != label.shape[0]:
+        if label is not None and predicted.shape[0] != label.shape[0]:
             errors.append(f"Initial dimension (representing batch size)" +
                           f" of predicted and label tensors must be the same, but is not:" +
                           f" {predicted.shape[0]} != {label.shape[0]}.")
-        if predicted.shape[1] != label.shape[1]:
+        if label is not None and predicted.shape[1] != label.shape[1]:
             errors.append(f"Second dimension (representing number of symbols per morpheme)" +
                           f" of predicted and label tensors must be the same, but is not:"
                           f" {predicted.shape[1]} != {label.shape[1]}.")
@@ -77,7 +80,7 @@ class UnbindingLoss(Loss):
             errors.append(f"Final dimension of predicted tensor must match" +
                           f" expected size of symbol vector, but does not:" +
                           f" {predicted.shape[2]} != {self.c}.")
-        if label.shape[2] != self.c:
+        if label is not None and label.shape[2] != self.c:
             errors.append(f"Final dimension of label tensor must match" +
                           f" expected size of symbol vector, but does not:" +
                           f" {label.shape[2]} != {self.c}.")
@@ -156,3 +159,15 @@ class UnbindingLoss(Loss):
             weight=self.weight,
             ignore_index=self.ignore_index,
         )
+
+    def unbind(self, predicted_tpr: torch.Tensor) -> List[Morpheme]:
+
+        dimensions: Dimensions = self.check_dimensions(predicted_tpr)
+
+        cosine_similarity = self.calculate_cosine_similarity(predicted_tpr, dimensions)
+
+        predicted_labels = cosine_similarity.view(-1, dimensions.a).argmax(dim=-1).view(dimensions.b, dimensions.m)
+
+        return [Morpheme(graphemes=[self.alphabet[i] for i in predicted_labels[b].tolist()],
+                  tpr=predicted_tpr[b].tolist())
+                for b in range(dimensions.b)]
