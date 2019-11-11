@@ -153,7 +153,8 @@ def configure_testing(args: List[str]) -> argparse.Namespace:
 
 def evaluate(args: argparse.Namespace) -> None:
     device = util.get_device()
-    model: MorphemeVectors = torch.load(args.morpheme_vectors).to(device)
+    model: MorphemeVectors = torch.load(args.morpheme_vectors)
+    model.to(device)
     model.run_testing(args.batch_size)
 
 
