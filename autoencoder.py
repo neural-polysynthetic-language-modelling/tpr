@@ -112,7 +112,7 @@ class MorphemeVectors(torch.nn.Module):
 
             if epoch == 1:  # Report total loss before any optimization as loss at Epoch 0
                 logging.info(f"Epoch {str(0).zfill(len(str(epochs)))}\ttrain loss: {total_loss}")
-            elif epoch % logging_frequency == 0:
+            if epoch % logging_frequency == 0:
                 logging.info(f"Epoch {str(epoch).zfill(len(str(epochs)))}\ttrain loss: {total_loss}")
 
             optimizer.step()
@@ -176,7 +176,8 @@ def train(args: argparse.Namespace) -> None:
                        logging_frequency=args.print_every)
 
     logging.info(f"Saving model to {args.output_file}")
-    torch.save(model.to(torch.device("cpu")), args.output_file)
+    model.to(torch.device("cpu"))
+    torch.save(model, args.output_file)
 
 
 if __name__ == "__main__":
