@@ -12,14 +12,15 @@ from torch.utils.data import DataLoader  # type: ignore
 from corpus import MorphemeCorpus
 from loss import UnbindingLoss
 from morpheme import Morpheme
-
+import util
 
 class MorphemeVectors(torch.nn.Module):
 
-    def __init__(self, corpus: MorphemeCorpus, hidden_layer_size: int, num_hidden_layers: int):
+    def __init__(self, *, corpus: MorphemeCorpus, hidden_layer_size: int, num_hidden_layers: int, device: torch.device):
         super().__init__()
 
-        self.loss_function = UnbindingLoss(alphabet=corpus.morphemes.alphabet)
+        self.device = device
+        self.loss_function = UnbindingLoss(alphabet=corpus.morphemes.alphabet, device=device)
         self.corpus: MorphemeCorpus = corpus
         self.input_dimension_size: int = corpus.morphemes.flattened_tpr_size
         self.hidden_layer_size: int = hidden_layer_size
@@ -38,10 +39,11 @@ class MorphemeVectors(torch.nn.Module):
         self.output_layer: torch.nn.Module = torch.nn.Linear(self.hidden_layer_size,
                                                              self.input_dimension_size,
                                                              bias=True)
+        self.to(device=device)
 
     def forward(self, morphemes: List[Morpheme]) -> torch.Tensor:
-        morpheme_tprs: torch.Tensor = MorphemeCorpus.collate_tprs(morphemes)
         batch_size: int = len(morphemes)
+        morpheme_tprs: torch.Tensor = MorphemeCorpus.collate_tprs(morphemes, self.device)
         tensor_at_input_layer: torch.Tensor = morpheme_tprs.view(batch_size, self.input_dimension_size)
         tensor_at_final_hidden_layer: torch.Tensor = self._apply_hidden_layers(tensor_at_input_layer)
         tensor_at_output_layer: torch.Tensor = self._apply_output_layer(tensor_at_final_hidden_layer)
@@ -61,7 +63,6 @@ class MorphemeVectors(torch.nn.Module):
         return self.output_layer(tensor_at_hidden_layer)  # .cuda(device=cuda_device))
 
     def run_training(self, *,
-                     # device: torch.device,
                      learning_rate: float,
                      epochs: int,
                      batch_size: int,
@@ -84,7 +85,7 @@ class MorphemeVectors(torch.nn.Module):
 
             for batch_number, morphemes in enumerate(data_loader):  # type: Tuple[int, List[Morpheme]]
                 predictions: torch.Tensor = self(morphemes)
-                labels: torch.Tensor = MorphemeCorpus.collate_tprs(morphemes)
+                labels: torch.Tensor = MorphemeCorpus.collate_tprs(morphemes, self.device)
                 loss: torch.Tensor = self.loss_function(predictions, labels)
                 total_loss += loss.item()
                 loss.backward()
@@ -127,6 +128,7 @@ def train(args: argparse.Namespace) -> None:
         corpus=MorphemeCorpus.load(args.corpus),
         hidden_layer_size=args.hidden_size,
         num_hidden_layers=args.hidden_layers,
+        device=util.get_device()
     )
 
     model.run_training(learning_rate=args.learning_rate,

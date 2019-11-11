@@ -33,12 +33,13 @@ class UnbindingLoss(Loss):
     def __init__(
         self,
         alphabet: Alphabet,
+        device: torch.device,
         weight: Optional[torch.Tensor] = None,
         reduction: str = "mean"
     ):
         super().__init__(reduction=reduction)
 
-        self.register_buffer("alpha_tensor", torch.stack([torch.tensor(symbol.vector, dtype=torch.float)
+        self.register_buffer("alpha_tensor", torch.stack([torch.tensor(symbol.vector, dtype=torch.float, device=device)
                                                           for symbol in alphabet]))
         """Tensor containing gold standard vector representations for each symbol in the alphabet"""
 
@@ -140,17 +141,14 @@ class UnbindingLoss(Loss):
 
     def forward(self, predicted_tpr, label_tpr):
 
+        # Verify that the arguments have the expected shape, and capture the value of each named dimension
         dimensions = self.check_dimensions(predicted_tpr, label_tpr)
 
         # Calculate and reshape cosine_similarity into shape (b*m, a)
         cosine_similarity = self.calculate_cosine_similarity(predicted_tpr, dimensions).view(-1, self.a)
-        gold_labels = self.calculate_cosine_similarity(label_tpr, dimensions).view(-1, self.a).argmax(dim=-1)
-        #label_argmax = label_similarity
-        #gold_labels = label_argmax
 
-        # Get the index of the correct symbol for each morpheme position in each batch,
-        #   then reshape into shape (b*m)
-        #gold_labels = label_tpr.view(-1, self.a).argmax(dim=1)
+        # Get the index of the correct symbol for each morpheme position in each batch, resulting in shape (b*m)
+        gold_labels = self.calculate_cosine_similarity(label_tpr, dimensions).view(-1, self.a).argmax(dim=-1)
 
         return cross_entropy(
             cosine_similarity,
