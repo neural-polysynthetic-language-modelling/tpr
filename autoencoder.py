@@ -122,13 +122,15 @@ def configure(args: List[str]) -> argparse.Namespace:
 
 def train(args: argparse.Namespace) -> None:
 
-    logging.info(f"Training MorphemeVectors using {args.corpus} as training data")
+    device = util.get_device()
+
+    logging.info(f"Training MorphemeVectors on {str(device)} using {args.corpus} as training data")
 
     model: MorphemeVectors = MorphemeVectors(
         corpus=MorphemeCorpus.load(args.corpus),
         hidden_layer_size=args.hidden_size,
         num_hidden_layers=args.hidden_layers,
-        device=util.get_device()
+        device=device
     )
 
     model.run_training(learning_rate=args.learning_rate,
