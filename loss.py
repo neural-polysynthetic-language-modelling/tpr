@@ -38,7 +38,8 @@ class UnbindingLoss(Loss):
     ):
         super().__init__(reduction=reduction)
 
-        self.register_buffer("alpha_tensor", torch.stack([torch.tensor(symbol.vector) for symbol in alphabet]))
+        self.register_buffer("alpha_tensor", torch.stack([torch.tensor(symbol.vector, dtype=torch.float)
+                                                          for symbol in alphabet]))
         """Tensor containing gold standard vector representations for each symbol in the alphabet"""
 
         self.ignore_index = alphabet.index_of(alphabet.pad)
@@ -75,16 +76,16 @@ class UnbindingLoss(Loss):
             errors.append(f"Final dimension of predicted tensor must match" +
                           f" expected size of symbol vector, but does not:" +
                           f" {predicted.shape[2]} != {self.c}.")
-        if label.shape[2] != self.a:
+        if label.shape[2] != self.c:
             errors.append(f"Final dimension of label tensor must match" +
-                          f" number of symbols in the alphabet, but does not:" +
-                          f" {label.shape[2]} != {self.a}.")
+                          f" expected size of symbol vector, but does not:" +
+                          f" {label.shape[2]} != {self.c}.")
         if len(errors) > 0:
             raise ValueError("\n".join(errors))
         else:
             return Dimensions(a=self.a, b=predicted.shape[0], c=self.c, m=predicted.shape[1])
 
-    def calculate_cosine_similarity(self, predicted: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
+    def calculate_cosine_similarity(self, morpheme_tpr: torch.Tensor, dimensions: Dimensions) -> torch.Tensor:
         """
         Computes the cosine similarity between predicted symbol vectors and gold standard symbol vectors.
 
@@ -112,13 +113,11 @@ class UnbindingLoss(Loss):
                 the symbol vector for the a^th symbol in the alphabet.
         """
 
-        dimensions = self.check_dimensions(predicted, label)
-
         # Calculate the dot product between predicted[y][z] and self.alpha_tensor[x]
         #   for each batch y in range(0, b),
         #       each character position z in range(0, m),
         #   and each symbol index x in range(0, a).
-        dot_product = torch.einsum("bmc,ac->bma", predicted, self.alpha_tensor)
+        dot_product = torch.einsum("bmc,ac->bma", morpheme_tpr, self.alpha_tensor)
 
         # Calculate a tensor of shape (a),
         #   where gold_norm[x] is the Euclidean norm of the x^th symbol vector in the alphabet
@@ -126,7 +125,7 @@ class UnbindingLoss(Loss):
 
         # Calculate a tensor of shape (b,m),
         #   where pred_norm[y][z] is the Euclidean norm of predicted symbol vector at position z of batch y
-        pred_norm = torch.norm(predicted, p=2, dim=-1)
+        pred_norm = torch.norm(morpheme_tpr, p=2, dim=-1)
 
         # Expand gold_norm to have the same shape as dot_product (b,m,a)
         reshaped_gold_norm = gold_norm.unsqueeze(0).unsqueeze(0).expand(dimensions.b, dimensions.m, -1)
@@ -139,14 +138,19 @@ class UnbindingLoss(Loss):
 
         return cosine_similarity  # Shape: (b,m,a)
 
-    def forward(self, predicted, label):
+    def forward(self, predicted_tpr, label_tpr):
+
+        dimensions = self.check_dimensions(predicted_tpr, label_tpr)
 
         # Calculate and reshape cosine_similarity into shape (b*m, a)
-        cosine_similarity = self.calculate_cosine_similarity(predicted, label).view(-1, self.a)
+        cosine_similarity = self.calculate_cosine_similarity(predicted_tpr, dimensions).view(-1, self.a)
+        gold_labels = self.calculate_cosine_similarity(label_tpr, dimensions).view(-1, self.a).argmax(dim=-1)
+        #label_argmax = label_similarity
+        #gold_labels = label_argmax
 
         # Get the index of the correct symbol for each morpheme position in each batch,
         #   then reshape into shape (b*m)
-        gold_labels = label.view(-1, self.a).argmax(dim=1)
+        #gold_labels = label_tpr.view(-1, self.a).argmax(dim=1)
 
         return cross_entropy(
             cosine_similarity,

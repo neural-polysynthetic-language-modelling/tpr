@@ -51,7 +51,8 @@ class MorphemeVectors(torch.nn.Module):
         tensor_at_previous_layer: torch.nn.Module = tensor_at_input_layer
 
         for hidden in iter(self.hidden_layers):  # type: torch.nn.Module
-            tensor_at_current_layer: torch.Tensor = relu(hidden(tensor_at_previous_layer))
+            tensor_before_activation: torch.Tensor = hidden(tensor_at_previous_layer)
+            tensor_at_current_layer: torch.Tensor = relu(tensor_before_activation)
             tensor_at_previous_layer = tensor_at_current_layer
 
         return tensor_at_current_layer
