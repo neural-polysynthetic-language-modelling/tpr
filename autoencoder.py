@@ -14,6 +14,7 @@ from loss import UnbindingLoss
 from morpheme import Morpheme
 import util
 
+
 class MorphemeVectors(torch.nn.Module):
 
     def __init__(self, *, corpus: MorphemeCorpus, hidden_layer_size: int, num_hidden_layers: int, device: torch.device):
