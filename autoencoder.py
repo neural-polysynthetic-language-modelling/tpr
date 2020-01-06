@@ -9,6 +9,7 @@ from torch.nn.functional import relu  # type: ignore
 import torch.optim  # type: ignore
 from torch.utils.data import DataLoader  # type: ignore
 
+from features import Symbol
 from corpus import MorphemeCorpus
 from loss import UnbindingLoss
 from morpheme import Morpheme
@@ -75,7 +76,10 @@ class MorphemeVectors(torch.nn.Module):
         tprs: torch.Tensor = self(morphemes)
         return self.unbinding_loss.unbind(tprs)
 
-    def run_testing(self, *, batch_size: int) -> None:
+    def run_testing(self, *, batch_size: int, start_of_morpheme: str, end_of_morpheme: str) -> None:
+
+        start_symbol: Symbol = self.corpus.morphemes.alphabet[start_of_morpheme]
+        end_symbol: Symbol = self.corpus.morphemes.alphabet[end_of_morpheme]
 
         data_loader: DataLoader = DataLoader(dataset=self.corpus, batch_size=batch_size, shuffle=False,
                                              collate_fn=MorphemeVectors.collate_morphemes)
@@ -83,7 +87,16 @@ class MorphemeVectors(torch.nn.Module):
         for morphemes in iter(data_loader):  # type: List[Morpheme]
             predicted_morphemes: List[Morpheme] = self.evaluate(morphemes)
             for i in range(len(morphemes)):
-                print(f"{morphemes[i]}\t{predicted_morphemes[i]}")
+                original = morphemes[i]
+                predicted = predicted_morphemes[i]
+
+                start_index = predicted_morphemes[i].graphemes.index(start_symbol)
+                end_index = predicted_morphemes[i].graphemes.index(end_symbol)
+
+                predicted_morpheme = Morpheme(graphemes=predicted_morphemes[i].graphemes[start_index:end_index],
+                                              tpr=predicted_morphemes[i].tpr[start_index:end_index])
+
+                print(f"{morphemes[i]}\t{predicted_morpheme}")
 
     def run_training(self, *,
                      learning_rate: float,
@@ -155,7 +168,9 @@ def evaluate(args: argparse.Namespace) -> None:
     device = util.get_device()
     model: MorphemeVectors = torch.load(args.morpheme_vectors)
     model.to(device)
-    model.run_testing(batch_size=args.batch_size)
+    model.run_testing(batch_size=args.batch_size,
+                      start_of_morpheme=args.start_of_morpheme,
+                      end_of_morpheme=args.end_of_morpheme)
 
 
 def train(args: argparse.Namespace) -> None:
