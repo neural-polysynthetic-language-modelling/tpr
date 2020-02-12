@@ -1,6 +1,7 @@
 import logging
 from typing import AbstractSet, Iterable, List, Mapping, MutableMapping, Set, Union
 import unicodedata
+import pdb
 
 
 class Symbol:
@@ -103,11 +104,14 @@ class Alphabet:
     @staticmethod
     def _read_symbols(source: Iterable[str]) -> Mapping[str, AbstractSet[str]]:
 
+        #pdb.set_trace()
         symbols: MutableMapping[str, AbstractSet[str]] = dict()
 
         for line_number, line in enumerate(source):
             ok = True
             parts: List[str] = line.strip().split()
+            if parts[0][0] == '<' or line_number == 0:
+                continue
             for part in parts:
                 for character in part:  # type: str
                     category: str = unicodedata.category(character)
@@ -119,6 +123,7 @@ class Alphabet:
                         ok = False
                         logging.warning(f"WARNING - Skipping line {line_number}; contains control character:" +
                                         f"\t{Alphabet.unicode_info(character)}")
+            #pdb.set_trace()
             if ok:
                 symbol = parts[0]
                 features = set(parts[1:])
