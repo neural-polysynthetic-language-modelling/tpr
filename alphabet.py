@@ -7,18 +7,18 @@ import pdb
 class Symbol:
 
     def __init__(self, *,
-                 integer: int,
+                 id: int,
                  string: str,
                  features: AbstractSet[str],
                  alphabet: 'Alphabet'):
 
-        self._i = integer
+        self._i = id
         self._s = string
         self._f = features
         self._a = alphabet
 
     @property
-    def integer(self) -> int:
+    def id(self) -> int:
         return self._i
 
     @property
@@ -30,16 +30,25 @@ class Symbol:
         return self._f
 
     @property
+    def char_vector(self) -> List[int]: # one-hot
+        return self._a.char_vector(self)
+
+    @property
+    def feature_vector(self) -> List[int]: # multi-hot
+        return self._a.feature_vector(self)
+
+    @property
     def vector(self) -> List[int]:
-        return self._a.vector(self)
+        return self.char_vector + self.feature_vector
 
     def __str__(self) -> str:
         return self.string
 
     def __repr__(self) -> str:
         return f"Symbol(" + \
-               f"integer={str(self.integer).zfill(len(str(len(self._a))))}, " + \
-               f"vector={str(self.vector)}, " + \
+               f"id={str(self.id).zfill(len(str(len(self._a))))}, " + \
+               f"char_vector={str(self.char_vector)}, " + \
+               f"feature_vector={str(self.feature_vector)}, " + \
                f"string={self.string})"
 
 
@@ -59,25 +68,22 @@ class Alphabet:
         if len(errors) > 0:
             raise ValueError("\n".join(errors))
 
-        self._pad = Symbol(integer=0, string=pad, features=set(), alphabet=self)
-        self._oov = Symbol(integer=1, string=oov, features=set(), alphabet=self)
-        self._start = Symbol(integer=2, string=start_of_sequence, features=set(), alphabet=self)
-        self._end = Symbol(integer=3, string=end_of_sequence, features=set(), alphabet=self)
+        self._pad = Symbol(id=0, string=pad, features=set(), alphabet=self)
+        self._oov = Symbol(id=1, string=oov, features=set(), alphabet=self)
+        self._start = Symbol(id=2, string=start_of_sequence, features=set(), alphabet=self)
+        self._end = Symbol(id=3, string=end_of_sequence, features=set(), alphabet=self)
 
-        self._entry_map: MutableMapping[Union[int, str], Symbol] = {0: self._pad, pad: self._pad,
-                                                                    1: self._oov, oov: self._oov,
-                                                                    2: self._start, start_of_sequence: self._start,
-                                                                    3: self._end, end_of_sequence: self._end}
+        self._char2id = {pad: 0, oov: 1, start_of_sequence: 2, end_of_sequence: 3}
+        self._id2char = {0: pad, 1: oov, 2: start_of_sequence, 3: end_of_sequence}
+        self._id2symbol = {0: self._pad, 1: self._oov, 2: self._start, 3: self._end}
 
-        self._entry_list = [self._pad, self._oov, self._start, self._end]
+        for string in symbols.keys():
+            if string not in self._char2id.keys():
+                id = len(self._id2symbol)
 
-        for string in symbols:
-
-            if string not in self._entry_map:
-                v = Symbol(integer=len(self._entry_list), string=string, features=symbols[string], alphabet=self)
-                self._entry_map[v.integer] = v
-                self._entry_map[v.string] = v
-                self._entry_list.append(v)
+                self._char2id[string] = id
+                self._id2char[id] = string
+                self._id2symbol[id] = Symbol(id=id, string=string, features=symbols[string], alphabet=self)
 
     @staticmethod
     def load(filename: str) -> 'Alphabet':
@@ -90,16 +96,17 @@ class Alphabet:
         with open(filename, 'wb') as pickled_file:
             pickle.dump(self, pickled_file)
 
-    def vector(self, symbol: Symbol) -> List[int]:
+    def char_vector(self, symbol: Symbol) -> List[int]:
         one_hot: List[int] = [0] * len(self)
-        one_hot[symbol.integer] = 1
+        one_hot[symbol.id] = 1
+        return one_hot
 
+    def feature_vector(self, symbol: Symbol) -> List[int]:
         multi_hot: List[int] = [0] * len(self._features)
         for feature in symbol.features:
             feature_index = self._features[feature]
             multi_hot[feature_index] = 1
-
-        return one_hot + multi_hot
+        return multi_hot
 
     @staticmethod
     def _read_symbols(source: Iterable[str]) -> Mapping[str, AbstractSet[str]]:
@@ -160,27 +167,38 @@ class Alphabet:
         return self._end
 
     def __len__(self):
-        return len(self._entry_list)
+        return len(self._id2symbol)
 
     def __getitem__(self, key: Union[int, str]) -> Symbol:
-        if isinstance(key, int) or isinstance(key, str):
-            if key in self._entry_map:
-                return self._entry_map[key]
-            else:
-                return self.oov
-        else:
-            raise TypeError(f"Alphabet key must be int or str, not {type(key)}")
+
+        if isinstance(key, int):
+            if self.__contains__(key):
+                return self._id2symbol[key]
+            return self.oov
+
+        if isinstance(key, str):
+            if self.__contains__(key):
+                return self._id2symbol[self._char2id[key]]
+            return self.oov
+
+        raise TypeError(f"Alphabet key must be int or str, not {type(key)}")
 
     def __iter__(self):
-        return iter(self._entry_list)
+        return iter (list(self._id2symbol.values ()))
 
     def __contains__(self, item):
-        if isinstance(item, int) or isinstance(item, str):
-            return item in self._entry_map
-        elif isinstance(item, Symbol):
-            return item in self._entry_list
-        else:
-            return False
+
+        if isinstance(item, int):
+            return item in self._id2symbol
+        elif isinstance(item, str):
+            return item in self._char2id
+        elif isinstance(item, Symbol) :
+            return item in list (self._id2symbol.values ())
+        raise TypeError(f"Item must be int or str or Symbol, not {type(item)}")
+
+    @property
+    def characters (self) -> AbstractSet[str]:
+        return set (map (lambda x: x.string, list (self._id2symbol .values ())))
 
     @staticmethod
     def char_to_code_point(c: str) -> str:
