@@ -17,9 +17,6 @@ def configure(arguments: List[str]) -> argparse.Namespace:
     p.add('-b', '--blacklist_character', required=True, type=str, metavar='STRING',
           help="In the user-provided input file, words that begin with this character will be ignored.")
 
-    p.add('-b', '--delimiter', required=True, type=str, metavar='STRING',
-          help="In the segmented words, this character splits the morphemes.")
-
     p.add('-i', '--raw_sentences', required=True, type=str, metavar="FILENAME",
           help="Input file containing raw corpus in plain-text format")
 
@@ -27,7 +24,7 @@ def configure(arguments: List[str]) -> argparse.Namespace:
           help="Input file containing segmented corpus in plain-text format")
 
     p.add('-o', '--output_file', required=True, type=str, metavar="FILENAME",
-          help="Output file where pickled data object will be saved")
+          help="Output file where data will be saved")
 
     return p.parse_args(args=arguments)
 
@@ -36,12 +33,20 @@ class DataBuilder (object):
     def __init__(self, *,
                  tokenizer: Tokenizer,
                  blacklist_char: str,
-                 delimiter: str,
                  raw_sentences: Iterable[str],
-                 segmented_sentences: Iterable[str]):
+                 segmented_sentences: Iterable[str],
+                 output_file: ??????):
 
         # plan: for loop over zip(raw_sentences, segmented_sentences). for loop of words in sentences. throw out *words. write to file.
-        pass
+
+        processed_words = set([])
+
+        for sent1, sent2 in zip(raw_sentences, segmented_sentences):
+            for word1, word2 in zip(sent1, sent2):
+                if word2.startswith(blacklist_char) or word1 in processed_words:
+                    continue
+                
+                # keep writing here
 
 
 
@@ -55,11 +60,9 @@ def main(args: argparse.Namespace) -> None:
 
         db = DataBuilder(tokenizer=Tokenizer.load(args.tokenizer),
                                 blacklist_char=args.blacklist_character,
-                                delimiter=args.delimiter,
                                 raw_sentences=raw_sentences,
-                                segmented_sentences=segmented_sentences)
-
-        pickle.dump(db, output_file)
+                                segmented_sentences=segmented_sentences,
+                                output_file=output_file)
 
 
 if __name__ == "__main__":
