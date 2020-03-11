@@ -14,12 +14,6 @@ def configure(arguments: List[str]) -> argparse.Namespace:
     p.add('--tokenizer', required=True, type=str, metavar='FILENAME',
           help='Pickle file containing a Tokenizer object')
 
-    p.add('-b', '--blacklist_character', required=True, type=str, metavar='STRING',
-          help="In the user-provided input file, words that begin with this character will be ignored.")
-
-    p.add('-i', '--raw_sentences', required=True, type=str, metavar="FILENAME",
-          help="Input file containing raw corpus in plain-text format")
-
     p.add('-i', '--segmented_sentences', required=True, type=str, metavar="FILENAME",
           help="Input file containing segmented corpus in plain-text format")
 
@@ -27,6 +21,7 @@ def configure(arguments: List[str]) -> argparse.Namespace:
           help="Output file where data will be saved")
 
     return p.parse_args(args=arguments)
+
 
 class DataBuilder (object):
 
@@ -48,8 +43,7 @@ class DataBuilder (object):
                 # keep writing here
                 data_pairs.write(word1, "\t", word2, "\n") # raw then segmented with tab between.
                                                            # each pair should be on a separate line
-                processed_words.add(word1) # make sure the processed list registers the new processed word
-
+                processed_words.add(word1)
 
 
 
