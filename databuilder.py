@@ -39,7 +39,7 @@ class DataBuilder (object):
                  output_file: ??????):
 
         # plan: for loop over zip(raw_sentences, segmented_sentences). for loop of words in sentences. throw out *words. write to file.
-        data_pairs = open("data_pairs" + data_set + ".txt", "w+") # create a file to store the raw and segmented words in pairs
+        data_pairs = open("data_pairs_" + data_set + ".txt", "w+") # create a file to store the raw and segmented words in pairs
         processed_words = set([])
 
         for sent1, sent2 in zip(raw_sentences, segmented_sentences):

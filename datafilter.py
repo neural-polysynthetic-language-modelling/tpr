@@ -2,6 +2,7 @@ import argparse
 import configargparse
 from typing import Iterable, List, MutableSet, Optional
 from tokenizer import *
+import difflib
 
 # This file is for building training data for morpheme seq2seq segmenter.
 
@@ -35,40 +36,29 @@ class DataFilter (object):
                  tokenizer: Tokenizer,
                  blacklist_char: str,
                  segmented_sentences: Iterable[str],
+                 file1name: str,
+                 file2name: str,
                  output_file: ??????):
 
-        # plan: for loop over zip(raw_sentences, segmented_sentences). for loop of words in sentences. throw out *words. write to file.
-        #pairs = open("data_pairs.txt", "r") # open file to sort out the duplicate words for dev and test
-        #pairs.readlines()
-        # TODO: rewrite so only accepts two files. remove for loop??
-        train_data = open("data_pairs_train.txt", "r")
-        dev_data = open("data_pairs_dev.txt", "r")
-        test_data = open("data_pairs_test.txt", "r")
 
-        train_data.readlines()
-        dev_data.readlines()
-        test_data.readlines()
+        file1 = "data_pairs_" + file1name + ".txt"
+        with open(file1) as f1:
+            f1_text = f1.readlines()
 
-        dev_data_noDup = open("data_pairs_dev_noDuplicates.txt", "w+")
-        test_data_noDup = open("data_pairs_test_noDuplicates.txt", "w+")
+        file2 = "data_pairs_" + file2name + ".txt"
+        with open(file2) as f2:
+            f2_text = f2.readlines()
+
+        file2_noDuplicates = open("data_filtered_" + file2name + ".txt", "w+")
+
+        # Find and write the diff to a file
+        for line in difflib.unified_diff(f1_text, f2_text, fromfile=file1, tofile=file2, lineterm=''):
+            if line.startswith("+") and line.startswith("+++") != True: # if it is diff, write to file
+                file2_noDuplicates.write(line[1:]) # don't include the +
+
+        file2_noDuplicates.close()
 
 
-        for line in dev_data:
-            if line in train_data:  # if we've already seen the word, move on
-                continue
-            dev_data_noDup.write(line)
-
-        for line in test_data:
-            if line in dev_data:
-                continue
-            test_data_noDup.write(line)
-
-        train_data.close()
-        dev_data.close()
-        test_data.close()
-
-        dev_data_noDup.close()
-        test_data_noDup.close()
 
 
 
