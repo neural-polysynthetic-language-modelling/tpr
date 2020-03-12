@@ -14,36 +14,60 @@ def configure(arguments: List[str]) -> argparse.Namespace:
     p.add('--tokenizer', required=True, type=str, metavar='FILENAME',
           help='Pickle file containing a Tokenizer object')
 
-    p.add('-i', '--segmented_sentences', required=True, type=str, metavar="FILENAME",
-          help="Input file containing segmented corpus in plain-text format")
+    p.add('-i', '--word_pairs', required=True, type=str, metavar="FILENAME",
+          help="Input file containing word pairs in plain-text format")
 
-    p.add('-o', '--output_file', required=True, type=str, metavar="FILENAME",
-          help="Output file where data will be saved")
+    p.add('-o', '--train', required=True, type=str, metavar="FILENAME",
+          help="Output file where training set will be saved")
+
+    p.add('-o', '--dev',required=True, type=str, metavar="FILENAME",
+          help="Output file where development set will be saved")
+
+    p.add('-o', '--test', required=True, type=str, metavar="FILENAME",
+          help="Output file where test set will be saved")
 
     return p.parse_args(args=arguments)
 
 
-class DataBuilder (object):
+class DataFilter (object):
 
     def __init__(self, *,
                  tokenizer: Tokenizer,
                  blacklist_char: str,
-                 raw_sentences: Iterable[str],
                  segmented_sentences: Iterable[str],
                  output_file: ??????):
 
         # plan: for loop over zip(raw_sentences, segmented_sentences). for loop of words in sentences. throw out *words. write to file.
-        data_pairs = open("data_pairs.txt", "w+") # create a file to store the raw and segmented words in pairs
-        processed_words = set([])
+        #pairs = open("data_pairs.txt", "r") # open file to sort out the duplicate words for dev and test
+        #pairs.readlines()
 
-        for sent1, sent2 in zip(raw_sentences, segmented_sentences):
-            for word1, word2 in zip(sent1, sent2):
-                if word2.startswith(blacklist_char) or word1 in processed_words:
-                    continue
-                # keep writing here
-                data_pairs.write(word1, "\t", word2, "\n") # raw then segmented with tab between.
-                                                           # each pair should be on a separate line
-                processed_words.add(word1)
+        train_data = open("data_pairs_train.txt", "r")
+        dev_data = open("data_pairs_dev.txt", "r")
+        test_data = open("data_pairs_test.txt", "r")
+
+        train_data.readlines()
+        dev_data.readlines()
+        test_data.readlines()
+
+        dev_data_noDup = open("data_pairs_dev_noDuplicates.txt", "w+")
+        test_data_noDup = open("data_pairs_test_noDuplicates.txt", "w+")
+
+        for line in dev_data:
+            if line in train_data:  # if we've already seen the word, move on
+                continue
+            dev_data_noDup.write(line)
+
+        for line in test_data:
+            if line in dev_data:
+                continue
+            test_data_noDup.write(line)
+
+        train_data.close()
+        dev_data.close()
+        test_data.close()
+
+        dev_data_noDup.close()
+        test_data_noDup.close()
 
 
 

@@ -35,10 +35,11 @@ class DataBuilder (object):
                  blacklist_char: str,
                  raw_sentences: Iterable[str],
                  segmented_sentences: Iterable[str],
+                 data_set: str,
                  output_file: ??????):
 
         # plan: for loop over zip(raw_sentences, segmented_sentences). for loop of words in sentences. throw out *words. write to file.
-        data_pairs = open("data_pairs.txt", "w+") # create a file to store the raw and segmented words in pairs
+        data_pairs = open("data_pairs" + data_set + ".txt", "w+") # create a file to store the raw and segmented words in pairs
         processed_words = set([])
 
         for sent1, sent2 in zip(raw_sentences, segmented_sentences):
@@ -50,6 +51,7 @@ class DataBuilder (object):
                                                            # each pair should be on a separate line
                 processed_words.add(word1) # make sure the processed list registers the new processed word
 
+        data_pairs.close()
 
 
 
