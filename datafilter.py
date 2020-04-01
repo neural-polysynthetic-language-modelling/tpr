@@ -1,7 +1,6 @@
 import argparse
 import configargparse
-from typing import Iterable, List, MutableSet, Optional
-from tokenizer import *
+from typing import Iterable, List
 import difflib
 
 # This file is for building training data for morpheme seq2seq segmenter.
@@ -12,19 +11,19 @@ def configure(arguments: List[str]) -> argparse.Namespace:
     p.add('-c', '--config', required=False, is_config_file=True, type=str, metavar='FILENAME',
           help='configuration file')
 
-    p.add('--tokenizer', required=True, type=str, metavar='FILENAME',
-          help='Pickle file containing a Tokenizer object')
+    p.add('-i', '--train_pairs', required=True, type=str, metavar="FILENAME",
+          help="Input file containing training word pairs in plain-text format")
 
-    p.add('-i', '--word_pairs', required=True, type=str, metavar="FILENAME",
-          help="Input file containing word pairs in plain-text format")
+    p.add('-i', '--dev_pairs', required=True, type=str, metavar="FILENAME",
+          help="Input file containing dev word pairs in plain-text format")
 
-    p.add('-o', '--train', required=True, type=str, metavar="FILENAME",
-          help="Output file where training set will be saved")
+    p.add('-i', '--test_pairs', required=True, type=str, metavar="FILENAME",
+          help="Input file containing test word pairs in plain-text format")
 
-    p.add('-o', '--dev',required=True, type=str, metavar="FILENAME",
+    p.add('-o', '--dev_output_file',required=True, type=str, metavar="FILENAME",
           help="Output file where development set will be saved")
 
-    p.add('-o', '--test', required=True, type=str, metavar="FILENAME",
+    p.add('-o', '--test_output_file', required=True, type=str, metavar="FILENAME",
           help="Output file where test set will be saved")
 
     return p.parse_args(args=arguments)
@@ -33,49 +32,44 @@ def configure(arguments: List[str]) -> argparse.Namespace:
 class DataFilter (object):
 
     def __init__(self, *,
-                 tokenizer: Tokenizer,
-                 blacklist_char: str,
-                 segmented_sentences: Iterable[str],
-                 file1name: str,
-                 file2name: str,
-                 output_file: ??????):
+                 train_pairs: Iterable[str],
+                 dev_pairs: Iterable[str],
+                 test_pairs: Iterable[str],
+                 dev_output_file: str,
+                 test_output_file: str):
 
 
-        file1 = "data_pairs_" + file1name + ".txt"
-        with open(file1) as f1:
-            f1_text = f1.readlines()
+        training_words = set([])
+        for line in train_pairs:
+            training_words.add (line.split('\t')[0])
 
-        file2 = "data_pairs_" + file2name + ".txt"
-        with open(file2) as f2:
-            f2_text = f2.readlines()
+        # Remove all words in dev that are in train
+        dev_words = set([])
+        with open(dev_output_file, "w+") as dev_output:
+            for line in dev_pairs:
+                word = line.split('\t')[0]
+                if word not in training_words:
+                    dev_output.write(line)
+                    dev_words.add (word)
 
-        file2_noDuplicates = open("data_filtered_" + file2name + ".txt", "w+")
-
-        # Find and write the diff to a file
-        for line in difflib.unified_diff(f1_text, f2_text, fromfile=file1, tofile=file2, lineterm=''):
-            if line.startswith("+") and line.startswith("+++") != True: # if it is diff, write to file
-                file2_noDuplicates.write(line[1:]) # don't include the +
-
-        file2_noDuplicates.close()
-
-
-
+        # Remove all words in test that are in dev
+        with open(test_output_file, "w+") as test_output:
+            for line in test_pairs:
+                word = line.split('\t')[0]
+                if word not in dev_words:
+                    test_output.write(line)
 
 
 def main(args: argparse.Namespace) -> None:
 
-    import pickle
-    # raw_sentences is the entire dataset
-    with open(args.raw_sentences, 'rt') as raw_sentences, \
-            open(args.segmented_sentences, 'rt') as segmented_sentences, \
-            open(args.output_file, 'wb') as output_file:
-
-        db = DataBuilder(tokenizer=Tokenizer.load(args.tokenizer),
-                                blacklist_char=args.blacklist_character,
-                                raw_sentences=raw_sentences,
-                                segmented_sentences=segmented_sentences,
-                                output_file=output_file)
-
+    with open(args.train_pairs, 'rt') as train_pairs, \
+            open(args.dev_pairs, 'rt') as dev_pairs, \
+            open(args.test_pairs, 'rt') as test_pairs:
+        db = DataFilter(train_pairs=train_pairs,
+                        dev_pairs=dev_pairs,
+                        test_pairs=test_pairs,
+                         dev_output_file=args.dev_output_file,
+                        test_output_file=args.test_output_file)
 
 if __name__ == "__main__":
 
