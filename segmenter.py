@@ -8,8 +8,13 @@ import numpy as np
 import torch.optim as optim
 import time
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-def configure_training(args: List[str]) -> argparse.Namespace:
+
+def configure_training(args): # -> argparse.Namespace: #: List[str]) -> argparse.Namespace:
 
     p = configargparse.get_argument_parser()
     p.add('-c', '--config', required=False, is_config_file=True, help='configuration file')
@@ -96,11 +101,10 @@ class MyDataset(Dataset):
 
     def build_vocab(self, training_data):
         with open (training_data, 'r') as data:
+            i = 0
             for line in data:
-                splt = line.split('\t')
-                if len(splt) != 2:
-                    print ("Bad split!", splt)
-                    continue
+                splt = line.strip().split('\t')
+                i += 1
                 self.src_vocab.add_example(splt[0])
                 self.trg_vocab.add_example(splt[1])
 
@@ -108,10 +112,7 @@ class MyDataset(Dataset):
 
         with open (data, 'r') as dat:
             for line in dat:
-                splt = line.split('\t')
-                if len(splt) != 2:
-                    print ("Bad split! - build_matrices", splt)
-                    continue
+                splt = line.strip().split('\t')
                 self.X_words.append(splt[0])
                 self.y_words.append(splt[1])
 
@@ -145,6 +146,84 @@ class MyDataset(Dataset):
         assert len(self.X) == len(self.y)
         return len(self.X)
 
+class Encoder(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_size, batch_sz):
+        super(Encoder, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+        self.gru = nn.GRU(embedding_dim, hidden_size)
+        self.batch_sz = batch_sz
+
+    def forward(self, x, lens):
+        x = x  # MAX_LEN_SRC x batch_size
+        embeds = self.embedding(x)  # MAX_LEN_SRC x batch_size x embedding_dim
+        packed_input = pack_padded_sequence(embeds, lens)  # (sum(lens) x embedding_dim; max(lens))
+        output, hidden = self.gru(packed_input)  # (sum(lens) x hidden_size; max(lens)); num_layers x batch_size x hidden_size
+        output, xxx = pad_packed_sequence(output, total_length=x.shape[0])  # MAX_LEN_SRC x batch_size x hidden_size; batch_size (same as lens)
+        hidden = hidden[0]  # batch_size x hidden_size
+
+        return output, hidden  # MAX_LEN_SRC x batch_size x hidden_size; batch_size x hidden_size
+
+class Decoder(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_size, batch_sz):
+        super(Decoder, self).__init__()
+        self.attn = nn.Linear(hidden_size, hidden_size)
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
+        self.emb_dropout = nn.Dropout(0.1)
+        self.gru = nn.GRU(hidden_size, hidden_size)
+        self.attn_combine = nn.Linear(hidden_size * 2, hidden_size)
+        self.out = nn.Linear(hidden_size, vocab_size)
+
+    def forward(self, x, hidden, enc_output):
+        '''
+        Pseudo-code
+        - Calculate the score using the formula shown above using encoder output and hidden output.
+        Note h_t is the hidden output of the decoder and h_s is the encoder output in the formula
+        - Calculate the attention weights using softmax and
+        passing through V - which can be implemented as a fully connected layer
+        - Finally find c_t which is a context vector where the shape of context_vector should be (batch_size, hidden_size)
+        - You need to unsqueeze the context_vector for concatenating with x aas listed in Point 3 above
+        - Pass this concatenated tensor to the GRU and follow as specified in Point 4 above
+
+        Returns :
+        output - shape = (batch_size, vocab)
+        hidden state - shape = (batch_size, hidden size)
+        '''
+
+        x, hidden, enc_output = x, hidden, enc_output  # batch_size x 1; # batch_size x hidden_size; # MAX_LEN_SRC x batch_size x hidden_size
+
+        embedded = self.emb_dropout(self.embedding(x))  # batch_size x 1 x hidden_size
+        embedded = embedded.transpose(1, 0)  # 1 x batch_size x hidden_size
+        hidden = hidden.unsqueeze(0)  # 1 x batch_size x hidden_size
+        rnn_output, new_hidden = self.gru(embedded, hidden)  # 1 x batch_size x 1024; 1 x batch_size x 1024
+
+        energy = self.attn(enc_output)  # MAX_LEN_SRC x batch_size x hidden_size      corresponds to Wh_s
+        attn_energies = torch.sum(rnn_output * energy, dim=2)  # MAX_LEN_SRC x batch_size     corresponds to h_t^t W h_S
+        attn_energies = attn_energies.t()  # batch_size x MAX_LEN_SRC
+        attn_weights = F.softmax(attn_energies, dim=1).unsqueeze(1)  # batch_size x 1 x MAX_LEN_SRC
+
+        enc_output_t = enc_output.transpose(0, 1)  # batch_size x MAX_LEN_SRC x hidden_size
+        context = attn_weights.bmm(enc_output_t)  # batch_size x 1 x hidden_size
+
+        rnn_output = rnn_output.squeeze(0)  # batch_size x hidden_size  --> "dropping" dimension 0
+        context = context.squeeze(1)  # batch_size x hidden_size --> "dropping" dimension 1
+        concat_input = torch.cat((rnn_output, context), 1)  # batch_size x 2*hidden_size
+        concat_output = torch.tanh(self.attn_combine(concat_input))  # batch_size x hidden_size
+
+        output = self.out(concat_output)  # batch_size x vocab_size
+        output = F.softmax(output, dim=1)  # batch_size x vocab_size
+
+        return output, new_hidden.squeeze(0), attn_weights  # batch_size x vocab_size; batch_size x 1024; batch_size x
+
+
+def loss_function(real, pred, criterion):
+    """ Only consider non-zero inputs in the loss; mask needed """
+    # mask = 1 - np.equal(real, 0) # assign 0 to all above 0 and 1 to all 0s
+    # print(mask)
+    mask = real.ge(1).type(torch.cuda.FloatTensor)
+
+    loss_ = criterion(pred, real) * mask
+    return torch.mean(loss_)
+
 ### sort batch function to be able to use with pad_packed_sequence
 def sort_batch(X, y, lengths):
     lengths, indx = lengths.sort(dim=0, descending=True)
@@ -177,6 +256,7 @@ def train(args: argparse.Namespace) -> None:
 
     # Begin training - loop num_epochs time
     for epoch in range(args.num_epochs):
+        #print("here")
         start = time.time()
         encoder.train()
         decoder.train()
@@ -190,24 +270,41 @@ def train(args: argparse.Namespace) -> None:
             # Prepare inputs and run encoder
             inp, targ, inp_len = inp, targ, inp_len # batch_size x max_length_src; batch_size x max_length_trg; batch_size
             xs, ys, lens = sort_batch(inp, targ, inp_len)  # max_length_src x batch_size; batch_size x max_length_trg; batch_size
-            enc_output, enc_hidden = encoder(xs.to(device), lens, device = device) # max_length_src x batch_size x hidden_size; batch_size x hidden_size
+            enc_output, enc_hidden = encoder(xs.to(device), lens)#, device = device) # max_length_src x batch_size x hidden_size; batch_size x hidden_size
 
             # Initialize inputs to decoder
             dec_hidden = enc_hidden # batch_size x hidden_size
             dec_input = torch.tensor([[train_dataset.trg_vocab.word2idx['<sos>']]] * args.batch_size)  # batch_size x 1
 
             # Run decoder one step at a time, using teacher forcing
+            criterion = nn.CrossEntropyLoss()
             for t in range(1, ys.size(1)):
                 predictions, dec_hidden, _ = decoder(dec_input.to(device),  # batch_size x 1
                                                      dec_hidden.to(device),  # batch_size x hidden_size
                                                      enc_output.to(device))  # MAX_LEN_SRC x batch_size x hidden_size
                 # batch_size x vocab_size; batch_size x 1024; batch_size x 1 x MAX_LEN_SRC
+                loss += loss_function(ys[:, t].to(device), predictions.to(device), criterion)
+                dec_input = ys[:, t].unsqueeze(1)
 
+            batch_loss = (loss / int(ys.size(1)))
+            total_loss += batch_loss
 
+            optimizer.zero_grad()
 
+            loss.backward()
 
+            ### UPDATE MODEL PARAMETERS
+            optimizer.step()
 
+            # to keep an eye on how the learning is going. Hopefully the loss goes down.
+            if batch % 100 == 0:
+                print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1,
+                                                             batch,
+                                                             batch_loss.detach().item()))
 
+        print('Epoch {} Loss {:.4f}'.format(epoch + 1,
+                                            total_loss / args.batch_size))
+        print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
     # dataset = DataLoader(MyDataset(), batch_size=BATCH_SIZE,
     #                      drop_last=True,
     #                      shuffle=True)
@@ -255,11 +352,12 @@ if __name__ == "__main__":
     args = configure_training(sys.argv[1:])
     dataset = MyDataset(args.training_data)
     dev_dataset = MyDataset(args.val_data, dataset.src_vocab, dataset.trg_vocab)
-
-    print (dataset.src_vocab.word2idx)
-    print (dataset.y_words[0:2])
-    print (dataset.y[0:2])
-    print ('-------')
-    print (dev_dataset.src_vocab.word2idx)
-    print (dev_dataset.y_words[0:2])
-    print (dev_dataset.y[0:2])
+    train(args)
+    # print (dataset.src_vocab.word2idx)
+    # print (dataset.y_words[0:2])
+    # print (dataset.y[0:2])
+    # print ('-------')
+    # print (dev_dataset.src_vocab.word2idx)
+    # print (dev_dataset.y_words[0:2])
+    # print (dev_dataset.y[0:2]) #comment
+    # # pdb.set_trace()
