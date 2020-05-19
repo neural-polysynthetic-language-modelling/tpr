@@ -36,6 +36,20 @@ def configure_training(args): # -> argparse.Namespace: #: List[str]) -> argparse
     return p.parse_args(args=args)
 ## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
 ## evaluation should get the tensor format it expects
+
+class Model(object):
+    def __init__(self, vocab_inp_size, vocab_trg_size, embedding_dim, units, batch_sz):
+        self.encoder = Encoder(vocab_inp_size, embedding_dim, units, batch_sz)
+        self.decoder = Decoder(vocab_trg_size, embedding_dim, units, batch_sz)
+        self.encoder.to(DEVICE)
+        self.decoder.to(DEVICE)
+
+        self.vocab_inp_size = vocab_inp_size
+        self.vocab_trg_size = vocab_trg_size
+        self.embedding_dim = embedding_dim
+        self.units = units
+        self.batch_sz = batch_sz
+
 class Encoder(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, batch_sz):
         super(Encoder, self).__init__()
@@ -133,7 +147,8 @@ def loss_function(real, pred): #, criterion):
 def sort_batch(X, y, lengths):
     lengths, indx = lengths.sort(dim=0, descending=True)
     X = X[indx]
-    y = y[indx]
+    if y is not None:
+        y = y[indx]
     return X.transpose(0,1), y, lengths # transpose (batch x seq) to (seq x batch)
 
 
@@ -160,14 +175,14 @@ def preprocess_sentence_eng_esp(w):
 def get_tensor(name, example):
     return ['<start>'] + list(example) + ['<end>']
 
-    if name == 'out':
-        vals = example.split("^")
-    else:
-        vals = list(example)
-
-    vals = ['<start>'] + vals + ['<end>']
-
-    return vals
+    # if name == 'out':
+    #     vals = example.split("^")
+    # else:
+    #     vals = list(example)
+    #
+    # vals = ['<start>'] + vals + ['<end>']
+    #
+    # return vals
 
 def max_length(tensor):
     return max(len(t) for t in tensor)
@@ -248,12 +263,17 @@ def get_reference_candidate(target, pred):
 
 
 def evaluate(trg,pred):
-    assert pred.shape == trg.shape
+    assert pred.shape[0] == trg.shape[0]
+    num_examples = pred.shape[0]
 
     # accuracy
-    num_examples_correct = (torch.sum(pred == trg, dim=1) == pred.shape[1]).sum().tolist()
-    num_examples = pred.shape[0]
-    accuracy = num_examples_correct / num_examples
+    num_same = 0
+    for i in range(pred.shape[0]):
+        pred_row = [x for x in pred[i, :].tolist() if x != 0]
+        trg_row = [x for x in trg[i, :].tolist() if x != 0]
+        if pred_row == trg_row:
+            num_same += 1
+    acc = num_same / num_examples
 
     # unrestricted accuracy
     num_same = 0
@@ -275,7 +295,7 @@ def evaluate(trg,pred):
     max_dist = max(edit_dists)
     avg_dist = sum(edit_dists) / len(edit_dists)
 
-    return (accuracy, unrestricted_acc, min_dist, avg_dist, max_dist)
+    return (acc, unrestricted_acc, min_dist, avg_dist, max_dist)
 
 def edit_distance(str1, str2):
     '''Simple Levenshtein implementation for evalm.'''
@@ -294,53 +314,52 @@ def edit_distance(str1, str2):
                               table[i - 1][j - 1] + dg)
     return int(table[len(str2)][len(str1)])
 
-def train_model():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+def train_model(trn_dataset, dev_dataset, model):
     print(torch.cuda.is_available())
 
     ## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
     ## evaluation should get the tensor format it expects, this is only for reference
-    encoder = Encoder(vocab_inp_size, embedding_dim, units, BATCH_SIZE)
-    decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
+    # encoder = Encoder(vocab_inp_size, embedding_dim, units, BATCH_SIZE)
+    # decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
+    #
+    # encoder.to(DEVICE)
+    # decoder.to(DEVICE)
+    n_batch = len(trn_dataset.dataset) // model.batch_sz
 
-    encoder.to(device)
-    decoder.to(device)
-
-    optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
+    optimizer = optim.Adam(list(model.encoder.parameters()) + list(model.decoder.parameters()),
                            lr=0.001)
 
     for epoch in range(EPOCHS):
         start = time.time()
 
-        encoder.train()
-        decoder.train()
+        model.encoder.train()
+        model.decoder.train()
 
         total_loss = 0
 
-        for (batch, (inp, targ, inp_len)) in enumerate(dataset):
+        for (batch, (inp, targ, inp_len)) in enumerate(trn_dataset):
             loss = 0
             inp, targ, inp_len = inp, targ, inp_len  # batch_size x MAX_LEN_SRC; batch_size x MAX_LEN_TAR; batch_size
             xs, ys, lens = sort_batch(inp, targ,
                                       inp_len)  # MAX_LEN_SRC x batch_size; batch_size x MAX_LEN_TAR; batch_size
 
-            enc_output, enc_hidden = encoder(xs.to(device),
+            enc_output, enc_hidden = model.encoder(xs.to(DEVICE),
                                              lens)  # , device=device)   # MAX_LEN_SRC x batch_size x hidden_size; batch_size x hidden_size
             dec_hidden = enc_hidden  # batch_size x hidden_size
 
             # use teacher forcing - feeding the target as the next input (via dec_input)
-            dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * BATCH_SIZE)  # batch_size x 1
+            dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * model.batch_sz)  # batch_size x 1
 
             # run code below for every timestep in the ys batch
             for t in range(1, ys.size(1)):
-                predictions, dec_hidden, _ = decoder(dec_input.to(device),  # batch_size x 1
-                                                     dec_hidden.to(device),  # batch_size x hidden_size
-                                                     enc_output.to(device))  # MAX_LEN_SRC x batch_size x hidden_size
+                predictions, dec_hidden, _ = model.decoder(dec_input.to(DEVICE),  # batch_size x 1
+                                                     dec_hidden.to(DEVICE),  # batch_size x hidden_size
+                                                     enc_output.to(DEVICE))  # MAX_LEN_SRC x batch_size x hidden_size
                 # batch_size x vocab_size; batch_size x 1024; batch_size x 1 x MAX_LEN_SRC
 
-                loss += loss_function(ys[:, t].to(device), predictions.to(device))
+                loss += loss_function(ys[:, t].to(DEVICE), predictions.to(DEVICE))
                 # loss += loss_
                 dec_input = ys[:, t].unsqueeze(1)
-            # pdb.set_trace()
             batch_loss = (loss / int(ys.size(1)))
             total_loss += float(batch_loss)
 
@@ -356,52 +375,59 @@ def train_model():
                                                              batch,
                                                              batch_loss.detach().item()))
 
-        ### TODO: Save checkpoint for model
-        # pdb.set_trace()
-        print('Epoch {} Loss {:.4f}'.format(epoch + 1,
-                                            total_loss / N_BATCH))
-        print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
-    return encoder, decoder, device, epoch
 
-def inference_of_model(encoder, decoder, device, epoch):
+        ### TODO: Save checkpoint for model
+        print('Epoch {} Loss {:.4f}'.format(epoch + 1,
+                                            total_loss / n_batch))
+        pred_output = inference_of_model(model, dev_dataset)
+        eval = evaluate(torch.Tensor(dev_dataset.dataset.target),pred_output)
+
+        print("Eval metrics at epoch {}: ".format(epoch + 1), eval)
+        print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+    return epoch
+
+def inference_of_model(model, dataset):
     start = time.time()
 
-    encoder.eval()
-    decoder.eval()
+    model.encoder.eval()
+    model.decoder.eval()
 
     total_loss = 0
 
-    final_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
-    target_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
+    pred_output = torch.zeros((len(dataset.dataset), MAX_TRG_LENGTH))
+    # target_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
 
-    for (batch, (inp, targ, inp_len)) in enumerate(val_dataset):
-        loss = 0
-        xs, ys, lens = sort_batch(inp, targ, inp_len)
-        enc_output, enc_hidden = encoder(xs.to(device), lens)
+    for (batch, (inp, _, inp_len)) in enumerate(dataset):
+        #TODO: implement dev/test loss
+        #loss = 0
+        xs, _, lens = sort_batch(inp, None, inp_len)
+        enc_output, enc_hidden = model.encoder(xs.to(DEVICE), lens)
         dec_hidden = enc_hidden
 
-        dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * BATCH_SIZE)
-        curr_output = torch.zeros((ys.size(0), ys.size(1)))
+        dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * xs.size(1))
+        curr_output = torch.zeros((xs.size(1), MAX_TRG_LENGTH)) #ys.size(1)))
         curr_output[:, 0] = dec_input.squeeze(1)
 
-        for t in range(1, ys.size(1)):  # run code below for every timestep in the ys batch
-            predictions, dec_hidden, _ = decoder(dec_input.to(device),
-                                                 dec_hidden.to(device),
-                                                 enc_output.to(device))
-            loss += loss_function(ys[:, t].to(device), predictions.to(device))
+        for t in range(1, MAX_TRG_LENGTH):  # run code below for every timestep in the ys batch
+            predictions, dec_hidden, _ = model.decoder(dec_input.to(DEVICE),
+                                                 dec_hidden.to(DEVICE),
+                                                 enc_output.to(DEVICE))
+            #loss += loss_function(ys[:, t].to(DEVICE), predictions.to(DEVICE))
             dec_input = torch.argmax(predictions, dim=1).unsqueeze(1)
             curr_output[:, t] = dec_input.squeeze(1)
-        final_output[batch * BATCH_SIZE:(batch + 1) * BATCH_SIZE] = curr_output
-        target_output[batch * BATCH_SIZE:(batch + 1) * BATCH_SIZE] = targ
-        batch_loss = (loss / int(ys.size(1)))
-        total_loss += float(batch_loss)
-    print('Epoch {} Loss {:.4f}'.format(epoch + 1,
-                                        total_loss / N_BATCH))
-    print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
-    print('Accuracy: {}'.format(evaluate(target_output, final_output)))
-    pdb.set_trace()
 
-    return final_output, target_output
+        pred_output[batch * model.batch_sz: (batch + 1) * xs.size(1)] = curr_output
+        #target_output[batch * model.batch_sz:(batch + 1) * model.batch_sz] = targ
+        #batch_loss = (loss / int(ys.size(1)))
+        #total_loss += float(batch_loss)
+    # print('Epoch {} Loss {:.4f}'.format(epoch + 1,
+    #                                     total_loss / N_BATCH))
+    print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+    # print('Accuracy: {}'.format(evaluate(target_output, pred_output)))
+
+    return pred_output #, target_output
+
+
 
 def prep_pairs(file, lang):
     print(file)
@@ -455,8 +481,7 @@ if __name__ == "__main__":
 
 
     if args.lang == 'esp':
-        # Now we do the preprocessing using pandas and lambdas
-        # Make sure YOU only run this once - if you run it twice it will mess up the data so you will have run the few above cells again
+        # preprocessing using pandas and lambdas
         data = pd.DataFrame(original_word_pairs, columns=["out", "inp"])
         data["out"] = data.out.apply(lambda w: preprocess_sentence_eng_esp(w))
         data["inp"] = data.inp.apply(lambda w: preprocess_sentence_eng_esp(w))
@@ -471,7 +496,6 @@ if __name__ == "__main__":
         data_dev = pairs2panda(original_word_pairs_dev)
         data_tst = pairs2panda(original_word_pairs_tst)
         print(args.lang)
-        pdb.set_trace()
         data = pd.concat([data_trn, data_dev, data_tst])
 
 
@@ -486,53 +510,64 @@ if __name__ == "__main__":
     input_tensor_tst, target_tensor_tst = prepare_data(data_tst, inp_lang, trg_lang)
 
 
-    BUFFER_SIZE = len(input_tensor_trn)
-    BATCH_SIZE = 60
-    N_BATCH = BUFFER_SIZE//BATCH_SIZE
+    # BUFFER_SIZE = len(input_tensor_trn)
+    batch_size = 60
+    # N_BATCH = BUFFER_SIZE//BATCH_SIZE
     embedding_dim = 256
+
+    # hidden size CHANGE THIS
     units = 1024
     vocab_inp_size = len(inp_lang.word2idx)
     vocab_tar_size = len(trg_lang.word2idx)
 
-    train_dataset = MyData(input_tensor_trn, target_tensor_trn)
-    val_dataset = MyData(input_tensor_dev, target_tensor_dev)
+    model = Model(vocab_inp_size, vocab_tar_size, embedding_dim, units, batch_size)
 
-    dataset = DataLoader(train_dataset, batch_size = BATCH_SIZE,
+    train_dataset = MyData(input_tensor_trn, target_tensor_trn)
+    dev_dataset = MyData(input_tensor_dev, target_tensor_dev)
+    tst_dataset = MyData(input_tensor_tst, target_tensor_tst)
+
+    trn_dataset = DataLoader(train_dataset, batch_size = batch_size,
                          drop_last=True,
                          shuffle=True)
 
-    val_dataset = DataLoader(val_dataset, batch_size = BATCH_SIZE,
-                         drop_last=True,
-                         shuffle=False)
+    dev_dataset = DataLoader(dev_dataset, batch_size = batch_size,
+                             drop_last=True,
+                             shuffle=False)
+
+    tst_dataset = DataLoader(tst_dataset, batch_size=batch_size,
+                             drop_last=True,
+                             shuffle=False)
+
     # Device
     print(data_trn['inp'])
     print(data_trn['out'])
-    pdb.set_trace()
-    encoder, decoder, device, epoch = train_model()
-    final_output, target_output = inference_of_model(encoder, decoder, device, epoch)
+    epoch = train_model(trn_dataset, dev_dataset, model)
+    pred_output = inference_of_model(model, tst_dataset)
+    eval = evaluate(torch.Tensor(tst_dataset.dataset.target),pred_output)
+    print("test set eval metrics: ", eval)
 
+    if lang == 'esp':
+        bleu_1 = 0.0
+        bleu_2 = 0.0
+        bleu_3 = 0.0
+        bleu_4 = 0.0
+        smoother = SmoothingFunction()
+        save_candidate = []
 
-    bleu_1 = 0.0
-    bleu_2 = 0.0
-    bleu_3 = 0.0
-    bleu_4 = 0.0
-    smoother = SmoothingFunction()
-    save_candidate = []
+        for i in range(len(tst_dataset.dataset)):
+            reference, candidate = get_reference_candidate(tst_dataset.dataset.target[i], pred_output[i])
+            # print(reference)
+            # print(candidate)
+            save_candidate.append(candidate)
 
-    for i in range(len(target_tensor_dev)):
-        reference, candidate = get_reference_candidate(target_output[i], final_output[i])
-        # print(reference)
-        # print(candidate)
-        save_candidate.append(candidate)
+            bleu_1 += sentence_bleu(reference, candidate, weights=(1, 0, 0, 0), smoothing_function=smoother.method1)
+            bleu_2 += sentence_bleu(reference, candidate, weights=(0, 1, 0, 0), smoothing_function=smoother.method2)
+            bleu_3 += sentence_bleu(reference, candidate, weights=(0, 0, 1, 0), smoothing_function=smoother.method3)
+            bleu_4 += sentence_bleu(reference, candidate, weights=(0, 0, 0, 1), smoothing_function=smoother.method4)
 
-        bleu_1 += sentence_bleu(reference, candidate, weights=(1, 0, 0, 0), smoothing_function=smoother.method1)
-        bleu_2 += sentence_bleu(reference, candidate, weights=(0, 1, 0, 0), smoothing_function=smoother.method2)
-        bleu_3 += sentence_bleu(reference, candidate, weights=(0, 0, 1, 0), smoothing_function=smoother.method3)
-        bleu_4 += sentence_bleu(reference, candidate, weights=(0, 0, 0, 1), smoothing_function=smoother.method4)
-
-    print('Individual 1-gram: %f' % (bleu_1 / len(target_tensor_dev)))
-    print('Individual 2-gram: %f' % (bleu_2 / len(target_tensor_dev)))
-    print('Individual 3-gram: %f' % (bleu_3 / len(target_tensor_dev)))
-    print('Individual 4-gram: %f' % (bleu_4 / len(target_tensor_dev)))
-    assert (len(save_candidate) == len(target_tensor_dev))
+        print('Individual 1-gram: %f' % (bleu_1 / len(target_tensor_dev)))
+        print('Individual 2-gram: %f' % (bleu_2 / len(target_tensor_dev)))
+        print('Individual 3-gram: %f' % (bleu_3 / len(target_tensor_dev)))
+        print('Individual 4-gram: %f' % (bleu_4 / len(target_tensor_dev)))
+        assert (len(save_candidate) == len(target_tensor_dev))
 
