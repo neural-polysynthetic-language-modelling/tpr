@@ -1,168 +1,71 @@
-import argparse
-import configargparse
-import logging
-from typing import List, NamedTuple, Tuple
-import util
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import torch.optim as optim
-import time
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn as nn
+import torch.optim as optim
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import numpy as np
+import unicodedata
+import re
+import pdb
+
+import time
+import nltk
+from nltk.translate.bleu_score import sentence_bleu
+from nltk.translate.bleu_score import SmoothingFunction
+
+import configargparse
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def configure_training(args): # -> argparse.Namespace: #: List[str]) -> argparse.Namespace:
 
     p = configargparse.get_argument_parser()
     p.add('-c', '--config', required=False, is_config_file=True, help='configuration file')
 
-    p.add('--training_data', required=True, help='Tab-separated training file')
-    p.add('--val_data', required=True, help='Tab-separated validation file')
-    p.add('--hidden_size', required=True, type=int)
-    # p.add('--hidden_layers', required=True, type=int)
-    p.add('--embedding_dim', required = True, type=int)
-    #
-    # p.add('-o', '--output_file', required=True, type=str, metavar="FILENAME",
-    #       help="Output file where trained MorphemeSegmenter model will be saved")
-    #
-    # p.add('--continue_training', required=False, type=bool, help='Continue training')
-    #
-    # p.add('--print_every', required=True, type=int)
-    p.add('--batch_size', required=True, type=int)
+    p.add('--data', required=True, help='Tab-separated training file')
+    # p.add('--dev_data', required=False, help='Tab-separated validation file')
+    # p.add('--test_data', required=False, help='Tab-separated test file')
+
+    p.add('--lang', required=True, help='esp or ess')
     p.add('--num_epochs', required=True, type=int)
-    p.add('--learning_rate', required=True, type=float)
 
     return p.parse_args(args=args)
-
-def configure_testing(args: List[str]) -> argparse.Namespace:
-    pass
-
-
-class Vocab_Lang():
-    def __init__(self, is_y = False, morph_delim = '^'):
-        self.word2idx = {'<pad>':0, '<unk>': 1, '<sos>': 2, '<eos>':3}
-        self.idx2word = {0:'<pad>', 1: '<unk>', 2: '<sos>', '<eos>':3}
-        self.vocab = set()
-        self.morph_delim = morph_delim
-
-        self.is_y = is_y
-
-    def add_example(self, word): # example is a value in the left or right column of data i.e. ('writing', 'writ^ing') => example would be 'writing' or 'writ^ing'
-
-        if self.is_y:
-            vals = word.split(self.morph_delim)
-        else:
-            vals = list(word)
-
-        self.vocab.update(vals)
-        for word in vals:
-            self.word2idx[word] = self.word2idx.get(word, len(self.word2idx.values()))
-            self.idx2word[self.word2idx[word]] = word
-
-    def get_tensor(self, example):
-        if self.is_y:
-            vals = example.split(self.morph_delim)
-        else:
-            vals = list(example)
-
-        vals = ['<sos>'] + vals + ['<eos>']
-
-        return [self.word2idx.get(word, self.word2idx['<unk>']) for word in vals]
-
-
-class MyDataset(Dataset):
-
-    def __init__(self, data, src_vocab = None, trg_vocab = None):
-
-        # Learn source and target vocab
-        assert src_vocab is None and trg_vocab is None or src_vocab is not None and trg_vocab is not None
-        if src_vocab is None:
-            self.src_vocab = Vocab_Lang(is_y=False)
-            self.trg_vocab = Vocab_Lang(is_y=True)
-            self.build_vocab(data)
-        else:
-            self.src_vocab = src_vocab
-            self.trg_vocab = trg_vocab
-
-        # Dataset specific variables that store the data
-        self.X_words = [] # [write, reading, ...]
-        self.y_words = [] # [write, read^ing, ...]
-        self.X = None
-        self.y = None
-        self.X_length = None
-        self.max_length_src = None
-        self.max_length_trg = None
-
-
-        self.build_matrices(data)
-
-    def build_vocab(self, training_data):
-        with open (training_data, 'r') as data:
-            i = 0
-            for line in data:
-                splt = line.strip().split('\t')
-                i += 1
-                self.src_vocab.add_example(splt[0])
-                self.trg_vocab.add_example(splt[1])
-
-    def build_matrices(self, data):
-
-        with open (data, 'r') as dat:
-            for line in dat:
-                splt = line.strip().split('\t')
-                self.X_words.append(splt[0])
-                self.y_words.append(splt[1])
-
-        # Vectorize the input and target languages
-        src_tensor = [self.src_vocab.get_tensor(example) for example in self.X_words]
-        trg_tensor = [self.trg_vocab.get_tensor(example) for example in self.y_words]
-
-        self.X_length = [len(vec) for vec in src_tensor] # length of sentences in src side before padding
-
-        # calculate the max_length of input and output tensor for padding
-        self.max_length_src, self.max_length_trg = max([len(vec) for vec in src_tensor]), max([len(vec) for vec in trg_tensor])
-
-        def pad_sequences(x, max_len):
-            padded = np.zeros((max_len), dtype=np.int64) # zeros b/c zero is padding idx
-            if len(x) > max_len:
-                padded[:] = x[:max_len]
-            else:
-                padded[:len(x)] = x
-            return padded
-
-        self.X = [pad_sequences(example, self.max_length_src) for example in src_tensor]
-        self.y = [pad_sequences(example, self.max_length_trg) for example in trg_tensor]
-
-    def __getitem__(self, idx):
-        x = self.X[idx]
-        y = self.y[idx]
-        x_len = self.X_length[idx]
-        return x, y, x_len
-
-    def __len__(self):
-        assert len(self.X) == len(self.y)
-        return len(self.X)
-
+## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
+## evaluation should get the tensor format it expects
 class Encoder(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, batch_sz):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
-        self.gru = nn.GRU(embedding_dim, hidden_size)
-        self.batch_sz = batch_sz
+        self.gru = nn.GRU(embedding_dim, hidden_size) #, bidirectional=True)
 
     def forward(self, x, lens):
+        '''
+        Pseudo-code
+        - Pass x through an embedding layer
+        - Make sure x is correctly packed before the recurrent net
+        - Pass it through the recurrent net
+        - Make sure the output is unpacked correctly
+        - return output and hidden states from the recurrent net
+        - Feel free to play around with dimensions - the training loop should help you determine the dimensions
+        '''
+
         x = x  # MAX_LEN_SRC x batch_size
         embeds = self.embedding(x)  # MAX_LEN_SRC x batch_size x embedding_dim
         packed_input = pack_padded_sequence(embeds, lens)  # (sum(lens) x embedding_dim; max(lens))
-        output, hidden = self.gru(packed_input)  # (sum(lens) x hidden_size; max(lens)); num_layers x batch_size x hidden_size
-        output, xxx = pad_packed_sequence(output, total_length=x.shape[0])  # MAX_LEN_SRC x batch_size x hidden_size; batch_size (same as lens)
+        output, hidden = self.gru(
+            packed_input)  # (sum(lens) x hidden_size; max(lens)); num_layers x batch_size x hidden_size
+        output, xxx = pad_packed_sequence(output, total_length=x.shape[
+            0])  # MAX_LEN_SRC x batch_size x hidden_size; batch_size (same as lens)
         hidden = hidden[0]  # batch_size x hidden_size
 
         return output, hidden  # MAX_LEN_SRC x batch_size x hidden_size; batch_size x hidden_size
 
+
+## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
+## evaluation should get the tensor format it expects
 class Decoder(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_size, batch_sz):
         super(Decoder, self).__init__()
@@ -204,23 +107,24 @@ class Decoder(nn.Module):
         enc_output_t = enc_output.transpose(0, 1)  # batch_size x MAX_LEN_SRC x hidden_size
         context = attn_weights.bmm(enc_output_t)  # batch_size x 1 x hidden_size
 
-        rnn_output = rnn_output.squeeze(0)  # batch_size x hidden_size  --> "dropping" dimension 0
-        context = context.squeeze(1)  # batch_size x hidden_size --> "dropping" dimension 1
+        rnn_output = rnn_output.squeeze(0)  # batch_size x hidden_size
+        context = context.squeeze(1)  # batch_size x hidden_size
         concat_input = torch.cat((rnn_output, context), 1)  # batch_size x 2*hidden_size
         concat_output = torch.tanh(self.attn_combine(concat_input))  # batch_size x hidden_size
 
         output = self.out(concat_output)  # batch_size x vocab_size
         output = F.softmax(output, dim=1)  # batch_size x vocab_size
 
-        return output, new_hidden.squeeze(0), attn_weights  # batch_size x vocab_size; batch_size x 1024; batch_size x
+        return output, new_hidden.squeeze(
+            0), attn_weights  # batch_size x vocab_size; batch_size x 1024; batch_size x 1 x MAX_LEN_SRC
 
-
-def loss_function(real, pred, criterion):
+def loss_function(real, pred): #, criterion):
     """ Only consider non-zero inputs in the loss; mask needed """
     # mask = 1 - np.equal(real, 0) # assign 0 to all above 0 and 1 to all 0s
     # print(mask)
     mask = real.ge(1).type(torch.cuda.FloatTensor)
-
+    criterion = nn.CrossEntropyLoss()
+    #TODO: see if defining criterion is necessary
     loss_ = criterion(pred, real) * mask
     return torch.mean(loss_)
 
@@ -231,63 +135,213 @@ def sort_batch(X, y, lengths):
     y = y[indx]
     return X.transpose(0,1), y, lengths # transpose (batch x seq) to (seq x batch)
 
-def train(args: argparse.Namespace) -> None:
 
-    device = util.get_device()
+# Converts the unicode file to ascii
+def unicode_to_ascii(s):
+    """
+    Normalizes latin chars with accent to their canonical decomposition
+    """
+    return ''.join(c for c in unicodedata.normalize('NFD', s)
+                   if unicodedata.category(c) != 'Mn')
 
-    logging.info(f"Training MorphemeSegmenter on {str(device)} using {args.training_data} as training data")
+# Preprocessing the sentence to add the start, end tokens and make them lower-case
+def preprocess_sentence_eng_esp(w):
+    w = unicode_to_ascii(w.lower().strip())
+    w = re.sub(r"([?.!,¿])", r" \1 ", w)
+    w = re.sub(r'[" "]+', " ", w)
 
-    # Set up train and dev dataloaders
-    train_dataset = MyDataset(args.training_data)
-    val_dataset = MyDataset(args.val_data, train_dataset.src_vocab, train_dataset.trg_vocab)
-    train_dataloader = DataLoader(train_dataset, batch_size = args.batch_size, drop_last = True, shuffle = True)
-    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, drop_last=True, shuffle=False)
+    w = re.sub(r"[^a-zA-Z?.!,¿]+", " ", w)
 
-    # Set up model (encoder & decoder)
-    vocab_src_size = len(train_dataset.src_vocab.word2idx)
-    vocab_trg_size = len(train_dataset.trg_vocab.word2idx)
-    encoder = Encoder(vocab_src_size, args.embedding_dim, args.hidden_size, args.batch_size)
-    decoder = Decoder(vocab_trg_size, args.embedding_dim, args.hidden_size, args.batch_size)
+    w = w.rstrip().strip()
+    w = ['<start>'] + w.split(' ') + ['<end>']
+    return w
+
+def get_tensor(name, example):
+    return ['<start>'] + list(example) + ['<end>']
+
+    if name == 'out':
+        vals = example.split("^")
+    else:
+        vals = list(example)
+
+    vals = ['<start>'] + vals + ['<end>']
+
+    return vals
+
+def max_length(tensor):
+    return max(len(t) for t in tensor)
+
+def pad_sequences(x, max_len):
+    padded = np.zeros((max_len), dtype=np.int64)
+    if len(x) > max_len: padded[:] = x[:max_len]
+    else: padded[:len(x)] = x
+    return padded
+
+
+class Vocab_Lang():
+    def __init__(self, data):
+        """ data is the list of all sentences in the language dataset"""
+        self.data = data
+        self.word2idx = {}
+        self.idx2word = {}
+        self.vocab = set()
+
+        self.create_index()
+
+    def create_index(self):
+        for sentence in self.data:
+            self.vocab.update(sentence)
+
+        # add a padding token
+        self.word2idx['<pad>'] = 0
+
+        # word to index mapping
+        for index, word in enumerate(self.vocab):
+            self.word2idx[word] = index + 1  # +1 because of pad token
+
+        # index to word mapping
+        for word, index in self.word2idx.items():
+            self.idx2word[index] = word
+
+    def matrix2words(self, matrix):
+        sentences = []
+        for i in range(matrix.shape[0]):
+            words = []
+            for j in range(matrix.shape[1]):
+                if matrix[i,j].tolist() == self.word2idx['<pad>']:
+                    break
+                words.append(self.idx2word[matrix[i,j].tolist()])
+            sentences.append(' '.join(words))
+        return sentences
+
+
+# conver the data to tensors and pass to the Dataloader
+# to create an batch iterator
+from torch.utils.data import Dataset, DataLoader
+
+
+class MyData(Dataset):
+    def __init__(self, X, y):
+        self.data = X
+        self.target = y
+        # TODO: convert this into torch code if possible
+        self.length = [np.sum(1 - np.equal(x, 0)) for x in X]
+
+    def __getitem__(self, index):
+        x = self.data[index]
+        y = self.target[index]
+        x_len = self.length[index]
+        return x, y, x_len
+
+    def __len__(self):
+        return len(self.data)
+
+
+
+def get_reference_candidate(target, pred):
+  reference = list(target)
+  reference = [targ_lang.idx2word[s] for s in np.array(reference[1:])]
+  candidate = list(pred)
+  candidate = [targ_lang.idx2word[s] for s in np.array(candidate[1:])]
+  return reference, candidate
+
+
+def evaluate(trg,pred):
+    assert pred.shape == trg.shape
+
+    # accuracy
+    num_examples_correct = (torch.sum(pred == trg, dim=1) == pred.shape[1]).sum().tolist()
+    num_examples = pred.shape[0]
+    accuracy = num_examples_correct / num_examples
+
+    # unrestricted accuracy
+    num_same = 0
+    for i in range(pred.shape[0]):
+        pred_row = [x for x in pred[i,:].tolist() if x != 0]
+        trg_row = [x for x in trg[i,:].tolist() if x != 0]
+        if sorted(pred_row) == sorted(trg_row):
+            num_same += 1
+    unrestricted_acc = num_same / num_examples
+
+    # edit distance
+    edit_dists = [None] * pred.shape[0]
+    for i in range(pred.shape[0]):
+        pred_row = [x for x in pred[i, :].tolist() if x != 0]
+        trg_row = [x for x in trg[i, :].tolist() if x != 0]
+        edit_dists[i] = edit_distance(pred_row, trg_row)
+
+    min_dist = min(edit_dists)
+    max_dist = max(edit_dists)
+    avg_dist = sum(edit_dists) / len(edit_dists)
+
+    return (accuracy, unrestricted_acc, min_dist, avg_dist, max_dist)
+
+def edit_distance(str1, str2):
+    '''Simple Levenshtein implementation for evalm.'''
+    table = np.zeros([len(str2) + 1, len(str1) + 1])
+    for i in range(1, len(str2) + 1):
+        table[i][0] = table[i - 1][0] + 1
+    for j in range(1, len(str1) + 1):
+        table[0][j] = table[0][j - 1] + 1
+    for i in range(1, len(str2) + 1):
+        for j in range(1, len(str1) + 1):
+            if str1[j - 1] == str2[i - 1]:
+                dg = 0
+            else:
+                dg = 1
+            table[i][j] = min(table[i - 1][j] + 1, table[i][j - 1] + 1,
+                              table[i - 1][j - 1] + dg)
+    return int(table[len(str2)][len(str1)])
+
+def train_model():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(torch.cuda.is_available())
+
+    ## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
+    ## evaluation should get the tensor format it expects, this is only for reference
+    encoder = Encoder(vocab_inp_size, embedding_dim, units, BATCH_SIZE)
+    decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
+
     encoder.to(device)
     decoder.to(device)
 
-    # Set up optimizer
-    optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.learning_rate)
+    optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
+                           lr=0.001)
 
-    # Begin training - loop num_epochs time
-    for epoch in range(args.num_epochs):
-        #print("here")
+    for epoch in range(EPOCHS):
         start = time.time()
+
         encoder.train()
         decoder.train()
 
         total_loss = 0
 
-        # Loop over each batch (at the end of each batch, update parameters i.e. backpropagate)
-        for (batch, (inp, targ, inp_len)) in enumerate(train_dataloader):
+        for (batch, (inp, targ, inp_len)) in enumerate(dataset):
             loss = 0
+            inp, targ, inp_len = inp, targ, inp_len  # batch_size x MAX_LEN_SRC; batch_size x MAX_LEN_TAR; batch_size
+            xs, ys, lens = sort_batch(inp, targ,
+                                      inp_len)  # MAX_LEN_SRC x batch_size; batch_size x MAX_LEN_TAR; batch_size
 
-            # Prepare inputs and run encoder
-            inp, targ, inp_len = inp, targ, inp_len # batch_size x max_length_src; batch_size x max_length_trg; batch_size
-            xs, ys, lens = sort_batch(inp, targ, inp_len)  # max_length_src x batch_size; batch_size x max_length_trg; batch_size
-            enc_output, enc_hidden = encoder(xs.to(device), lens)#, device = device) # max_length_src x batch_size x hidden_size; batch_size x hidden_size
+            enc_output, enc_hidden = encoder(xs.to(device),
+                                             lens)  # , device=device)   # MAX_LEN_SRC x batch_size x hidden_size; batch_size x hidden_size
+            dec_hidden = enc_hidden  # batch_size x hidden_size
 
-            # Initialize inputs to decoder
-            dec_hidden = enc_hidden # batch_size x hidden_size
-            dec_input = torch.tensor([[train_dataset.trg_vocab.word2idx['<sos>']]] * args.batch_size)  # batch_size x 1
+            # use teacher forcing - feeding the target as the next input (via dec_input)
+            dec_input = torch.tensor([[targ_lang.word2idx['<start>']]] * BATCH_SIZE)  # batch_size x 1
 
-            # Run decoder one step at a time, using teacher forcing
-            criterion = nn.CrossEntropyLoss()
+            # run code below for every timestep in the ys batch
             for t in range(1, ys.size(1)):
                 predictions, dec_hidden, _ = decoder(dec_input.to(device),  # batch_size x 1
                                                      dec_hidden.to(device),  # batch_size x hidden_size
                                                      enc_output.to(device))  # MAX_LEN_SRC x batch_size x hidden_size
                 # batch_size x vocab_size; batch_size x 1024; batch_size x 1 x MAX_LEN_SRC
-                loss += loss_function(ys[:, t].to(device), predictions.to(device), criterion)
-                dec_input = ys[:, t].unsqueeze(1)
 
+                loss += loss_function(ys[:, t].to(device), predictions.to(device))
+                # loss += loss_
+                dec_input = ys[:, t].unsqueeze(1)
+            # pdb.set_trace()
             batch_loss = (loss / int(ys.size(1)))
-            total_loss += batch_loss
+            total_loss += float(batch_loss)
 
             optimizer.zero_grad()
 
@@ -296,68 +350,217 @@ def train(args: argparse.Namespace) -> None:
             ### UPDATE MODEL PARAMETERS
             optimizer.step()
 
-            # to keep an eye on how the learning is going. Hopefully the loss goes down.
             if batch % 100 == 0:
                 print('Epoch {} Batch {} Loss {:.4f}'.format(epoch + 1,
                                                              batch,
                                                              batch_loss.detach().item()))
 
+        ### TODO: Save checkpoint for model
+        # pdb.set_trace()
         print('Epoch {} Loss {:.4f}'.format(epoch + 1,
-                                            total_loss / args.batch_size))
+                                            total_loss / N_BATCH))
         print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
-    # dataset = DataLoader(MyDataset(), batch_size=BATCH_SIZE,
-    #                      drop_last=True,
-    #                      shuffle=True)
+    return encoder, decoder, device, epoch
 
-    # val_dataset = DataLoader(val_dataset, batch_size=BATCH_SIZE,
-    #                          drop_last=True,
-    #                          shuffle=False)
+def inference_of_model(encoder, decoder, device, epoch):
+    start = time.time()
 
-    #dataloader = MyDataLoader(args.training_data)
+    encoder.eval()
+    decoder.eval()
 
-    # model: MorphemeVectors = MorphemeVectors(
-    #     corpus=MorphemeCorpus.load(args.corpus),
-    #     hidden_layer_size=args.hidden_size,
-    #     num_hidden_layers=args.hidden_layers,
-    #     device=device)
-    #
-    # model.run_training(learning_rate=args.learning_rate,
-    #                    epochs=args.num_epochs,
-    #                    batch_size=args.batch_size,
-    #                    logging_frequency=args.print_every)
-    #
-    # logging.info(f"Saving model to {args.output_file}")
-    # model.to(torch.device("cpu"))
-    # torch.save(model, args.output_file)
+    total_loss = 0
 
+    final_output = torch.zeros((len(target_tensor_val), max_length_tar))
+    target_output = torch.zeros((len(target_tensor_val), max_length_tar))
 
+    for (batch, (inp, targ, inp_len)) in enumerate(val_dataset):
+        loss = 0
+        xs, ys, lens = sort_batch(inp, targ, inp_len)
+        enc_output, enc_hidden = encoder(xs.to(device), lens)
+        dec_hidden = enc_hidden
 
+        dec_input = torch.tensor([[targ_lang.word2idx['<start>']]] * BATCH_SIZE)
+        curr_output = torch.zeros((ys.size(0), ys.size(1)))
+        curr_output[:, 0] = dec_input.squeeze(1)
+
+        for t in range(1, ys.size(1)):  # run code below for every timestep in the ys batch
+            predictions, dec_hidden, _ = decoder(dec_input.to(device),
+                                                 dec_hidden.to(device),
+                                                 enc_output.to(device))
+            loss += loss_function(ys[:, t].to(device), predictions.to(device))
+            dec_input = torch.argmax(predictions, dim=1).unsqueeze(1)
+            curr_output[:, t] = dec_input.squeeze(1)
+        final_output[batch * BATCH_SIZE:(batch + 1) * BATCH_SIZE] = curr_output
+        target_output[batch * BATCH_SIZE:(batch + 1) * BATCH_SIZE] = targ
+        batch_loss = (loss / int(ys.size(1)))
+        total_loss += float(batch_loss)
+    print('Epoch {} Loss {:.4f}'.format(epoch + 1,
+                                        total_loss / N_BATCH))
+    print('Time taken for 1 epoch {} sec\n'.format(time.time() - start))
+    print('Accuracy: {}'.format(evaluate(target_output, final_output)))
+    pdb.set_trace()
+
+    return final_output, target_output
+
+def prep_pairs(file):
+    print(file)
+    f = open(file, encoding='UTF-8').read().strip().split('\n')
+    lines = f
+    total_num_examples = 30000
+    original_word_pairs = [[w for w in l.split('\t')][:2] for l in lines[:total_num_examples]]
+    return original_word_pairs
+
+def pairs2panda(data_pairs):
+    data = pd.DataFrame(data_pairs, columns=["inp", "out"])
+    data['inp'] = data.inp.apply(lambda w: get_tensor('inp', w))
+    data['out'] = data.out.apply(lambda w: get_tensor('out', w))
+    return data
+
+def prepare_data(data_trn, data_dev, data_tst):
+    # create vocab from training data
+    inp_lang = Vocab_Lang(data_trn["inp"].values.tolist())
+    targ_lang = Vocab_Lang(data_trn["out"].values.tolist())
+
+    # Vectorize the input and target languages for the data
+    input_tensor_trn = [[inp_lang.word2idx[s] for s in inp] for inp in data_trn["inp"].values.tolist()]
+    target_tensor_trn = [[targ_lang.word2idx[s] for s in out] for out in data_trn["out"].values.tolist()]
+
+    input_tensor_dev = [[inp_lang.word2idx[s] for s in inp] for inp in data_dev["inp"].values.tolist()]
+    target_tensor_dev = [[targ_lang.word2idx[s] for s in out] for out in data_dev["out"].values.tolist()]
+
+    input_tensor_tst = [[inp_lang.word2idx[s] for s in inp] for inp in data_tst["inp"].values.tolist()]
+    target_tensor_tst = [[targ_lang.word2idx[s] for s in out] for out in data_tst["out"].values.tolist()]
+
+    # calculate the max_length of input and output tensor for padding
+    max_length_inp_trn, max_length_tar_trn = max_length(input_tensor_trn), max_length(target_tensor_trn)
+    max_length_inp_dev, max_length_tar_dev = max_length(input_tensor_dev), max_length(target_tensor_dev)
+    max_length_inp_tst, max_length_tar_tst = max_length(input_tensor_tst), max_length(target_tensor_tst)
+
+    # pad all the sentences in the dataset with the max_length
+    input_tensor_trn = [pad_sequences(x, max_length_inp_trn) for x in input_tensor_trn]
+    target_tensor_trn = [pad_sequences(x, max_length_tar_trn) for x in target_tensor_trn]
+
+    input_tensor_dev = [pad_sequences(x, max_length_inp_dev) for x in input_tensor_dev]
+    target_tensor_dev = [pad_sequences(x, max_length_tar_dev) for x in target_tensor_dev]
+
+    input_tensor_tst = [pad_sequences(x, max_length_inp_tst) for x in input_tensor_tst]
+    target_tensor_tst = [pad_sequences(x, max_length_tar_tst) for x in target_tensor_tst]
+
+    return input_tensor_trn, target_tensor_trn, input_tensor_dev, target_tensor_dev, input_tensor_tst, target_tensor_tst
 
 if __name__ == "__main__":
-
     import sys
-    #
-    # logging.basicConfig(
-    #     level='INFO',
-    #     stream=sys.stderr,
-    #     datefmt="%Y-%m-%d %H:%M:%S",
-    #     format="%(asctime)s\t%(message)s",
-    # )
-    #
-    # if '--num_epochs' in sys.argv:
-    #     train(configure_training(args=sys.argv[1:]))
-    # else:
-    #     evaluate(configure_testing(args=sys.argv[1:]))
-
+    print(torch.__version__)
     args = configure_training(sys.argv[1:])
-    dataset = MyDataset(args.training_data)
-    dev_dataset = MyDataset(args.val_data, dataset.src_vocab, dataset.trg_vocab)
-    train(args)
-    # print (dataset.src_vocab.word2idx)
-    # print (dataset.y_words[0:2])
-    # print (dataset.y[0:2])
-    # print ('-------')
-    # print (dev_dataset.src_vocab.word2idx)
-    # print (dev_dataset.y_words[0:2])
-    # print (dev_dataset.y[0:2]) #comment
-    # # pdb.set_trace()
+
+    # enables switching between esp-eng to ess
+    lang = args.lang
+
+    data_file = args.data
+    EPOCHS = args.num_epochs
+
+    # open file and extract word pairs for train, dev, and test
+    if lang == 'esp':
+        original_word_pairs = prep_pairs(data_file)
+    elif lang == 'ess':
+        original_word_pairs_trn = prep_pairs(data_file + 'train')
+        original_word_pairs_dev = prep_pairs(data_file + 'dev')
+        original_word_pairs_tst = prep_pairs(data_file + 'test')
+
+
+    if args.lang == 'esp':
+        # Now we do the preprocessing using pandas and lambdas
+        # Make sure YOU only run this once - if you run it twice it will mess up the data so you will have run the few above cells again
+        data = pd.DataFrame(original_word_pairs, columns=["out", "inp"])
+        data["out"] = data.out.apply(lambda w: preprocess_sentence_eng_esp(w))
+        data["inp"] = data.inp.apply(lambda w: preprocess_sentence_eng_esp(w))
+        data_trn = data
+        # data_dev = data[24000:27000]
+        # data_tst = data[27000:]
+        pdb.set_trace()
+        print(args.lang)
+        #print(data[250:260])
+    elif args.lang == 'ess':
+        data_trn = pairs2panda(original_word_pairs_trn)
+        data_dev = pairs2panda(original_word_pairs_dev)
+        data_tst = pairs2panda(original_word_pairs_tst)
+        print(args.lang)
+
+    # input_tensor_trn, target_tensor_trn, \
+    # input_tensor_dev, target_tensor_dev, \
+    # input_tensor_tst, target_tensor_tst = prepare_data(data_trn, data_dev, data_tst)
+
+    # Creating training and test/val sets using an 80-20 split
+
+    # create vocab from training data
+    inp_lang = Vocab_Lang(data_trn["inp"].values.tolist())
+    targ_lang = Vocab_Lang(data_trn["out"].values.tolist())
+
+    # Vectorize the input and target languages for the data
+    input_tensor_trn= [[inp_lang.word2idx[s] for s in inp] for inp in data_trn["inp"].values.tolist()]
+    target_tensor_trn= [[targ_lang.word2idx[s] for s in out] for out in data_trn["out"].values.tolist()]
+
+    # calculate the max_length of input and output tensor for padding
+    max_length_inp_trn, max_length_tar_trn = max_length(input_tensor_trn), max_length(target_tensor_trn)
+
+    # pad all the sentences in the dataset with the max_length
+    input_tensor_trn = [pad_sequences(x, max_length_inp_trn) for x in input_tensor_trn]
+    target_tensor_trn = [pad_sequences(x, max_length_tar_trn) for x in target_tensor_trn]
+
+    input_tensor_train, input_tensor_val, target_tensor_train, target_tensor_val = input_tensor_trn[:24000], input_tensor_trn[24000:], target_tensor_trn[:24000], target_tensor_trn[24000:]
+
+    assert(len(input_tensor_train)==24000)
+    assert(len(target_tensor_train)==24000)
+    assert(len(input_tensor_val)==6000)
+    assert(len(target_tensor_val)==6000)
+
+    BUFFER_SIZE = len(input_tensor_train)
+    BATCH_SIZE = 60
+    N_BATCH = BUFFER_SIZE//BATCH_SIZE
+    embedding_dim = 256
+    units = 1024
+    vocab_inp_size = len(inp_lang.word2idx)
+    vocab_tar_size = len(targ_lang.word2idx)
+
+    train_dataset = MyData(input_tensor_train, target_tensor_train)
+    val_dataset = MyData(input_tensor_val, target_tensor_val)
+
+    dataset = DataLoader(train_dataset, batch_size = BATCH_SIZE,
+                         drop_last=True,
+                         shuffle=True)
+
+    val_dataset = DataLoader(val_dataset, batch_size = BATCH_SIZE,
+                         drop_last=True,
+                         shuffle=False)
+    # Device
+    print(data_trn['inp'])
+    print(data_trn['out'])
+    pdb.set_trace()
+    encoder, decoder, device, epoch = train_model()
+    final_output, target_output = inference_of_model(encoder, decoder, device, epoch)
+
+
+    bleu_1 = 0.0
+    bleu_2 = 0.0
+    bleu_3 = 0.0
+    bleu_4 = 0.0
+    smoother = SmoothingFunction()
+    save_candidate = []
+
+    for i in range(len(target_tensor_val)):
+        reference, candidate = get_reference_candidate(target_output[i], final_output[i])
+        # print(reference)
+        # print(candidate)
+        save_candidate.append(candidate)
+
+        bleu_1 += sentence_bleu(reference, candidate, weights=(1, 0, 0, 0), smoothing_function=smoother.method1)
+        bleu_2 += sentence_bleu(reference, candidate, weights=(0, 1, 0, 0), smoothing_function=smoother.method2)
+        bleu_3 += sentence_bleu(reference, candidate, weights=(0, 0, 1, 0), smoothing_function=smoother.method3)
+        bleu_4 += sentence_bleu(reference, candidate, weights=(0, 0, 0, 1), smoothing_function=smoother.method4)
+
+    print('Individual 1-gram: %f' % (bleu_1 / len(target_tensor_val)))
+    print('Individual 2-gram: %f' % (bleu_2 / len(target_tensor_val)))
+    print('Individual 3-gram: %f' % (bleu_3 / len(target_tensor_val)))
+    print('Individual 4-gram: %f' % (bleu_4 / len(target_tensor_val)))
+    assert (len(save_candidate) == len(target_tensor_val))
+
