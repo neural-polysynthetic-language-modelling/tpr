@@ -41,21 +41,21 @@ class DataFilter (object):
 
         training_words = set([])
         for line in train_pairs:
-            training_words.add (line.split('\t')[0])
+            training_words.add (line.strip().split('\t')[0])
 
         # Remove all words in dev that are in train
         dev_words = set([])
         with open(dev_output_file, "w+") as dev_output:
             for line in dev_pairs:
-                word = line.split('\t')[0]
+                word = line.strip().split('\t')[0]
                 if word not in training_words:
                     dev_output.write(line)
-                    dev_words.add (word)
+                    dev_words.add(word)
 
         # Remove all words in test that are in dev
         with open(test_output_file, "w+") as test_output:
             for line in test_pairs:
-                word = line.split('\t')[0]
+                word = line.strip().split('\t')[0]
                 if word not in dev_words:
                     test_output.write(line)
 

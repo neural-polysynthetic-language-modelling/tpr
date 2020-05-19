@@ -35,12 +35,11 @@ class DataBuilder(object):
                  output_file: str):
 
         processed_words = set([])
-
         with open(output_file, "w+") as data_pairs: # create a file to store the raw and segmented words in pairs
 
             for sent1, sent2 in zip(raw_sentences, segmented_sentences):
-                sent1_split = sent1.split (' ')
-                sent2_split = sent2.split (' ')
+                sent1_split = sent1.strip().split(' ')
+                sent2_split = sent2.strip().split(' ')
                 assert(len(sent1_split) == len (sent2_split))
                 for word1, word2 in zip(sent1_split, sent2_split):
                     if word2.startswith(blacklist_char) or word1 in processed_words:
