@@ -19,6 +19,7 @@ from nltk.translate.bleu_score import SmoothingFunction
 import configargparse
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MAX_TRG_LENGTH = 11
 
 def configure_training(args): # -> argparse.Namespace: #: List[str]) -> argparse.Namespace:
 
@@ -240,9 +241,9 @@ class MyData(Dataset):
 
 def get_reference_candidate(target, pred):
   reference = list(target)
-  reference = [targ_lang.idx2word[s] for s in np.array(reference[1:])]
+  reference = [trg_lang.idx2word[s] for s in np.array(reference[1:])]
   candidate = list(pred)
-  candidate = [targ_lang.idx2word[s] for s in np.array(candidate[1:])]
+  candidate = [trg_lang.idx2word[s] for s in np.array(candidate[1:])]
   return reference, candidate
 
 
@@ -327,7 +328,7 @@ def train_model():
             dec_hidden = enc_hidden  # batch_size x hidden_size
 
             # use teacher forcing - feeding the target as the next input (via dec_input)
-            dec_input = torch.tensor([[targ_lang.word2idx['<start>']]] * BATCH_SIZE)  # batch_size x 1
+            dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * BATCH_SIZE)  # batch_size x 1
 
             # run code below for every timestep in the ys batch
             for t in range(1, ys.size(1)):
@@ -370,8 +371,8 @@ def inference_of_model(encoder, decoder, device, epoch):
 
     total_loss = 0
 
-    final_output = torch.zeros((len(target_tensor_val), max_length_tar))
-    target_output = torch.zeros((len(target_tensor_val), max_length_tar))
+    final_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
+    target_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
 
     for (batch, (inp, targ, inp_len)) in enumerate(val_dataset):
         loss = 0
@@ -379,7 +380,7 @@ def inference_of_model(encoder, decoder, device, epoch):
         enc_output, enc_hidden = encoder(xs.to(device), lens)
         dec_hidden = enc_hidden
 
-        dec_input = torch.tensor([[targ_lang.word2idx['<start>']]] * BATCH_SIZE)
+        dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * BATCH_SIZE)
         curr_output = torch.zeros((ys.size(0), ys.size(1)))
         curr_output[:, 0] = dec_input.squeeze(1)
 
@@ -402,11 +403,14 @@ def inference_of_model(encoder, decoder, device, epoch):
 
     return final_output, target_output
 
-def prep_pairs(file):
+def prep_pairs(file, lang):
     print(file)
     f = open(file, encoding='UTF-8').read().strip().split('\n')
     lines = f
-    total_num_examples = 30000
+    if lang == 'esp':
+        total_num_examples = 30000
+    else:
+        total_num_examples = len(lines)
     original_word_pairs = [[w for w in l.split('\t')][:2] for l in lines[:total_num_examples]]
     return original_word_pairs
 
@@ -416,37 +420,19 @@ def pairs2panda(data_pairs):
     data['out'] = data.out.apply(lambda w: get_tensor('out', w))
     return data
 
-def prepare_data(data_trn, data_dev, data_tst):
-    # create vocab from training data
-    inp_lang = Vocab_Lang(data_trn["inp"].values.tolist())
-    targ_lang = Vocab_Lang(data_trn["out"].values.tolist())
-
+def prepare_data(data, inp_lang, trg_lang):
     # Vectorize the input and target languages for the data
-    input_tensor_trn = [[inp_lang.word2idx[s] for s in inp] for inp in data_trn["inp"].values.tolist()]
-    target_tensor_trn = [[targ_lang.word2idx[s] for s in out] for out in data_trn["out"].values.tolist()]
-
-    input_tensor_dev = [[inp_lang.word2idx[s] for s in inp] for inp in data_dev["inp"].values.tolist()]
-    target_tensor_dev = [[targ_lang.word2idx[s] for s in out] for out in data_dev["out"].values.tolist()]
-
-    input_tensor_tst = [[inp_lang.word2idx[s] for s in inp] for inp in data_tst["inp"].values.tolist()]
-    target_tensor_tst = [[targ_lang.word2idx[s] for s in out] for out in data_tst["out"].values.tolist()]
+    input_tensor = [[inp_lang.word2idx[s] for s in inp] for inp in data["inp"].values.tolist()]
+    target_tensor = [[trg_lang.word2idx[s] for s in out] for out in data["out"].values.tolist()]
 
     # calculate the max_length of input and output tensor for padding
-    max_length_inp_trn, max_length_tar_trn = max_length(input_tensor_trn), max_length(target_tensor_trn)
-    max_length_inp_dev, max_length_tar_dev = max_length(input_tensor_dev), max_length(target_tensor_dev)
-    max_length_inp_tst, max_length_tar_tst = max_length(input_tensor_tst), max_length(target_tensor_tst)
+    max_length_inp, max_length_tar = max_length(input_tensor), max_length(target_tensor)
 
     # pad all the sentences in the dataset with the max_length
-    input_tensor_trn = [pad_sequences(x, max_length_inp_trn) for x in input_tensor_trn]
-    target_tensor_trn = [pad_sequences(x, max_length_tar_trn) for x in target_tensor_trn]
+    input_tensor = [pad_sequences(x, max_length_inp) for x in input_tensor]
+    target_tensor = [pad_sequences(x, max_length_tar) for x in target_tensor]
 
-    input_tensor_dev = [pad_sequences(x, max_length_inp_dev) for x in input_tensor_dev]
-    target_tensor_dev = [pad_sequences(x, max_length_tar_dev) for x in target_tensor_dev]
-
-    input_tensor_tst = [pad_sequences(x, max_length_inp_tst) for x in input_tensor_tst]
-    target_tensor_tst = [pad_sequences(x, max_length_tar_tst) for x in target_tensor_tst]
-
-    return input_tensor_trn, target_tensor_trn, input_tensor_dev, target_tensor_dev, input_tensor_tst, target_tensor_tst
+    return input_tensor, target_tensor
 
 if __name__ == "__main__":
     import sys
@@ -461,11 +447,11 @@ if __name__ == "__main__":
 
     # open file and extract word pairs for train, dev, and test
     if lang == 'esp':
-        original_word_pairs = prep_pairs(data_file)
+        original_word_pairs = prep_pairs(data_file, lang)
     elif lang == 'ess':
-        original_word_pairs_trn = prep_pairs(data_file + 'train')
-        original_word_pairs_dev = prep_pairs(data_file + 'dev')
-        original_word_pairs_tst = prep_pairs(data_file + 'test')
+        original_word_pairs_trn = prep_pairs(data_file + 'train', lang)
+        original_word_pairs_dev = prep_pairs(data_file + 'dev', lang)
+        original_word_pairs_tst = prep_pairs(data_file + 'test', lang)
 
 
     if args.lang == 'esp':
@@ -474,56 +460,42 @@ if __name__ == "__main__":
         data = pd.DataFrame(original_word_pairs, columns=["out", "inp"])
         data["out"] = data.out.apply(lambda w: preprocess_sentence_eng_esp(w))
         data["inp"] = data.inp.apply(lambda w: preprocess_sentence_eng_esp(w))
-        data_trn = data
-        # data_dev = data[24000:27000]
-        # data_tst = data[27000:]
-        pdb.set_trace()
+        data_trn = data[:24000]
+        data_dev = data[24000:27000]
+        data_tst = data[27000:]
         print(args.lang)
         #print(data[250:260])
     elif args.lang == 'ess':
+        # returns pandas with columns 'inp' and 'out'
         data_trn = pairs2panda(original_word_pairs_trn)
         data_dev = pairs2panda(original_word_pairs_dev)
         data_tst = pairs2panda(original_word_pairs_tst)
         print(args.lang)
+        pdb.set_trace()
+        data = pd.concat([data_trn, data_dev, data_tst])
 
-    # input_tensor_trn, target_tensor_trn, \
-    # input_tensor_dev, target_tensor_dev, \
-    # input_tensor_tst, target_tensor_tst = prepare_data(data_trn, data_dev, data_tst)
 
-    # Creating training and test/val sets using an 80-20 split
 
     # create vocab from training data
-    inp_lang = Vocab_Lang(data_trn["inp"].values.tolist())
-    targ_lang = Vocab_Lang(data_trn["out"].values.tolist())
+    #TODO: URGENT make this be computed only from train data
+    inp_lang = Vocab_Lang(data["inp"].values.tolist())
+    trg_lang = Vocab_Lang(data["out"].values.tolist())
 
-    # Vectorize the input and target languages for the data
-    input_tensor_trn= [[inp_lang.word2idx[s] for s in inp] for inp in data_trn["inp"].values.tolist()]
-    target_tensor_trn= [[targ_lang.word2idx[s] for s in out] for out in data_trn["out"].values.tolist()]
+    input_tensor_trn, target_tensor_trn = prepare_data(data_trn, inp_lang, trg_lang)
+    input_tensor_dev, target_tensor_dev = prepare_data(data_dev, inp_lang, trg_lang)
+    input_tensor_tst, target_tensor_tst = prepare_data(data_tst, inp_lang, trg_lang)
 
-    # calculate the max_length of input and output tensor for padding
-    max_length_inp_trn, max_length_tar_trn = max_length(input_tensor_trn), max_length(target_tensor_trn)
 
-    # pad all the sentences in the dataset with the max_length
-    input_tensor_trn = [pad_sequences(x, max_length_inp_trn) for x in input_tensor_trn]
-    target_tensor_trn = [pad_sequences(x, max_length_tar_trn) for x in target_tensor_trn]
-
-    input_tensor_train, input_tensor_val, target_tensor_train, target_tensor_val = input_tensor_trn[:24000], input_tensor_trn[24000:], target_tensor_trn[:24000], target_tensor_trn[24000:]
-
-    assert(len(input_tensor_train)==24000)
-    assert(len(target_tensor_train)==24000)
-    assert(len(input_tensor_val)==6000)
-    assert(len(target_tensor_val)==6000)
-
-    BUFFER_SIZE = len(input_tensor_train)
+    BUFFER_SIZE = len(input_tensor_trn)
     BATCH_SIZE = 60
     N_BATCH = BUFFER_SIZE//BATCH_SIZE
     embedding_dim = 256
     units = 1024
     vocab_inp_size = len(inp_lang.word2idx)
-    vocab_tar_size = len(targ_lang.word2idx)
+    vocab_tar_size = len(trg_lang.word2idx)
 
-    train_dataset = MyData(input_tensor_train, target_tensor_train)
-    val_dataset = MyData(input_tensor_val, target_tensor_val)
+    train_dataset = MyData(input_tensor_trn, target_tensor_trn)
+    val_dataset = MyData(input_tensor_dev, target_tensor_dev)
 
     dataset = DataLoader(train_dataset, batch_size = BATCH_SIZE,
                          drop_last=True,
@@ -547,7 +519,7 @@ if __name__ == "__main__":
     smoother = SmoothingFunction()
     save_candidate = []
 
-    for i in range(len(target_tensor_val)):
+    for i in range(len(target_tensor_dev)):
         reference, candidate = get_reference_candidate(target_output[i], final_output[i])
         # print(reference)
         # print(candidate)
@@ -558,9 +530,9 @@ if __name__ == "__main__":
         bleu_3 += sentence_bleu(reference, candidate, weights=(0, 0, 1, 0), smoothing_function=smoother.method3)
         bleu_4 += sentence_bleu(reference, candidate, weights=(0, 0, 0, 1), smoothing_function=smoother.method4)
 
-    print('Individual 1-gram: %f' % (bleu_1 / len(target_tensor_val)))
-    print('Individual 2-gram: %f' % (bleu_2 / len(target_tensor_val)))
-    print('Individual 3-gram: %f' % (bleu_3 / len(target_tensor_val)))
-    print('Individual 4-gram: %f' % (bleu_4 / len(target_tensor_val)))
-    assert (len(save_candidate) == len(target_tensor_val))
+    print('Individual 1-gram: %f' % (bleu_1 / len(target_tensor_dev)))
+    print('Individual 2-gram: %f' % (bleu_2 / len(target_tensor_dev)))
+    print('Individual 3-gram: %f' % (bleu_3 / len(target_tensor_dev)))
+    print('Individual 4-gram: %f' % (bleu_4 / len(target_tensor_dev)))
+    assert (len(save_candidate) == len(target_tensor_dev))
 
