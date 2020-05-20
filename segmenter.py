@@ -17,9 +17,11 @@ from nltk.translate.bleu_score import sentence_bleu
 from nltk.translate.bleu_score import SmoothingFunction
 
 import configargparse
+from torch.utils.data import Dataset, DataLoader
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MAX_TRG_LENGTH = 11
+# MAX_TRG_LENGTH = 11
+MAX_TRG_LENGTH = 55
 
 def configure_training(args): # -> argparse.Namespace: #: List[str]) -> argparse.Namespace:
 
@@ -91,7 +93,7 @@ class Decoder(nn.Module):
         self.attn_combine = nn.Linear(hidden_size * 2, hidden_size)
         self.out = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x, hidden, enc_output):
+    def forward(self, x, hidden, enc_output): #pred end is a tensor
         '''
         Pseudo-code
         - Calculate the score using the formula shown above using encoder output and hidden output.
@@ -106,7 +108,6 @@ class Decoder(nn.Module):
         output - shape = (batch_size, vocab)
         hidden state - shape = (batch_size, hidden size)
         '''
-
         x, hidden, enc_output = x, hidden, enc_output  # batch_size x 1; # batch_size x hidden_size; # MAX_LEN_SRC x batch_size x hidden_size
 
         embedded = self.emb_dropout(self.embedding(x))  # batch_size x 1 x hidden_size
@@ -169,18 +170,18 @@ def preprocess_sentence_eng_esp(w):
     w = re.sub(r"[^a-zA-Z?.!,¿]+", " ", w)
 
     w = w.rstrip().strip()
-    w = ['<start>'] + w.split(' ') + ['<end>']
+    w = ['<sos>'] + w.split(' ') + ['<eos>']
     return w
 
 def get_tensor(name, example):
-    return ['<start>'] + list(example) + ['<end>']
+    return ['<sos>'] + list(example) + ['<eos>']
 
     # if name == 'out':
     #     vals = example.split("^")
     # else:
     #     vals = list(example)
     #
-    # vals = ['<start>'] + vals + ['<end>']
+    # vals = ['<sos>'] + vals + ['<eos>']
     #
     # return vals
 
@@ -210,10 +211,16 @@ class Vocab_Lang():
 
         # add a padding token
         self.word2idx['<pad>'] = 0
+        self.word2idx['<sos>'] = 1
+        self.word2idx['<eos>'] = 2
 
         # word to index mapping
-        for index, word in enumerate(self.vocab):
-            self.word2idx[word] = index + 1  # +1 because of pad token
+        index = 3
+        for _, word in enumerate(self.vocab):
+            if word != '<sos>' and word != '<eos>':
+                self.word2idx[word] = index   # +3 because of pad, sos, and eos tokens
+                index +=1
+           #     print(word)
 
         # index to word mapping
         for word, index in self.word2idx.items():
@@ -233,7 +240,6 @@ class Vocab_Lang():
 
 # conver the data to tensors and pass to the Dataloader
 # to create an batch iterator
-from torch.utils.data import Dataset, DataLoader
 
 
 class MyData(Dataset):
@@ -319,11 +325,6 @@ def train_model(trn_dataset, dev_dataset, model):
 
     ## Feel free to change any parameters class definitions as long as you can change the training code, but make sure
     ## evaluation should get the tensor format it expects, this is only for reference
-    # encoder = Encoder(vocab_inp_size, embedding_dim, units, BATCH_SIZE)
-    # decoder = Decoder(vocab_tar_size, embedding_dim, units, BATCH_SIZE)
-    #
-    # encoder.to(DEVICE)
-    # decoder.to(DEVICE)
     n_batch = len(trn_dataset.dataset) // model.batch_sz
 
     optimizer = optim.Adam(list(model.encoder.parameters()) + list(model.decoder.parameters()),
@@ -348,8 +349,7 @@ def train_model(trn_dataset, dev_dataset, model):
             dec_hidden = enc_hidden  # batch_size x hidden_size
 
             # use teacher forcing - feeding the target as the next input (via dec_input)
-            dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * model.batch_sz)  # batch_size x 1
-
+            dec_input = torch.tensor([[trg_lang.word2idx['<sos>']]] * model.batch_sz)  # batch_size x 1
             # run code below for every timestep in the ys batch
             for t in range(1, ys.size(1)):
                 predictions, dec_hidden, _ = model.decoder(dec_input.to(DEVICE),  # batch_size x 1
@@ -360,6 +360,7 @@ def train_model(trn_dataset, dev_dataset, model):
                 loss += loss_function(ys[:, t].to(DEVICE), predictions.to(DEVICE))
                 # loss += loss_
                 dec_input = ys[:, t].unsqueeze(1)
+
             batch_loss = (loss / int(ys.size(1)))
             total_loss += float(batch_loss)
 
@@ -395,7 +396,6 @@ def inference_of_model(model, dataset):
     total_loss = 0
 
     pred_output = torch.zeros((len(dataset.dataset), MAX_TRG_LENGTH))
-    # target_output = torch.zeros((len(target_tensor_dev), MAX_TRG_LENGTH))
 
     for (batch, (inp, _, inp_len)) in enumerate(dataset):
         #TODO: implement dev/test loss
@@ -404,7 +404,9 @@ def inference_of_model(model, dataset):
         enc_output, enc_hidden = model.encoder(xs.to(DEVICE), lens)
         dec_hidden = enc_hidden
 
-        dec_input = torch.tensor([[trg_lang.word2idx['<start>']]] * xs.size(1))
+        dec_input = torch.tensor([[trg_lang.word2idx['<sos>']]] * xs.size(1))
+        eos = torch.tensor([[trg_lang.word2idx['<sos>']]] * xs.size(1)) # all ones, zeros mean eos has been predicted
+
         curr_output = torch.zeros((xs.size(1), MAX_TRG_LENGTH)) #ys.size(1)))
         curr_output[:, 0] = dec_input.squeeze(1)
 
@@ -413,11 +415,21 @@ def inference_of_model(model, dataset):
                                                  dec_hidden.to(DEVICE),
                                                  enc_output.to(DEVICE))
             #loss += loss_function(ys[:, t].to(DEVICE), predictions.to(DEVICE))
+            eos = eos.to(DEVICE)
             dec_input = torch.argmax(predictions, dim=1).unsqueeze(1)
+
+            # update eos
+            dec_input = dec_input * eos # zero out any predictions where eos has already been predicted,
+                                        # should just be dec_input the first time through
+
+            # update eos to include <eos> just predicted
+            tmp0 = dec_input.clone()    # don't want to change original tensor
+            tmp0 = (tmp0!=2) * 1        # any end of sentence predictions turn into 0s
+            eos = eos * tmp0            # which in turn zeros out ones in eos
+
             curr_output[:, t] = dec_input.squeeze(1)
 
         pred_output[batch * model.batch_sz: (batch + 1) * xs.size(1)] = curr_output
-        #target_output[batch * model.batch_sz:(batch + 1) * model.batch_sz] = targ
         #batch_loss = (loss / int(ys.size(1)))
         #total_loss += float(batch_loss)
     # print('Epoch {} Loss {:.4f}'.format(epoch + 1,
@@ -453,7 +465,6 @@ def prepare_data(data, inp_lang, trg_lang):
 
     # calculate the max_length of input and output tensor for padding
     max_length_inp, max_length_tar = max_length(input_tensor), max_length(target_tensor)
-
     # pad all the sentences in the dataset with the max_length
     input_tensor = [pad_sequences(x, max_length_inp) for x in input_tensor]
     target_tensor = [pad_sequences(x, max_length_tar) for x in target_tensor]
@@ -541,9 +552,11 @@ if __name__ == "__main__":
     # Device
     print(data_trn['inp'])
     print(data_trn['out'])
+
     epoch = train_model(trn_dataset, dev_dataset, model)
     pred_output = inference_of_model(model, tst_dataset)
     eval = evaluate(torch.Tensor(tst_dataset.dataset.target),pred_output)
+
     print("test set eval metrics: ", eval)
 
     if lang == 'esp':
